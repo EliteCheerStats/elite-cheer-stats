@@ -204,18 +204,23 @@ export default function ResultsExplorerPage() {
       return true;
     });
 
-    // Sorting
-    const scoreFor = (r: Row) => {
-      if (sortBy === "event_score") return toNum(pick(r, eventScoreKeys, null));
-      if (sortBy === "performance_score") return toNum(pick(r, perfScoreKeys, null));
-      return toNum(pick(r, rawScoreKeys, null));
-    };
+// Sorting
+const scoreFor = (r: Row): number => {
+  const n = (() => {
+    switch (sortBy) {
+      case "event_score":
+        return toNum(pick(r, eventScoreKeys, undefined));
 
-    out.sort((a, b) => {
-      const av = scoreFor(a) ?? -Infinity;
-      const bv = scoreFor(b) ?? -Infinity;
-      return bv - av;
-    });
+      case "performance_score":
+        return toNum(pick(r, perfScoreKeys, undefined));
+
+      default:
+        return toNum(pick(r, rawScoreKeys, undefined));
+    }
+  })();
+
+  return n ?? Number.NEGATIVE_INFINITY;
+};
 
     return out.slice(0, Math.max(1, Math.min(limit, 5000)));
   }, [rows, age, round, d2Mode, flexMode, size, search, sortBy, limit]);
@@ -355,7 +360,14 @@ export default function ResultsExplorerPage() {
 
       {!loading && !error && derived.length > 0 && (
         <div style={{ overflowX: "auto" }}>
-          <table cellPadding={14} style={{ borderCollapse: "collapse", tableLayout: "fixed", Width: 1500 }}>
+          <table
+            cellPadding={14}
+             style={{
+              borderCollapse: "collapse",
+               tableLayout: "fixed",
+               width: 1500,
+             }}
+>
             <thead>
               <tr style={{ textAlign: "left", borderBottom: "2px solid #ddd" }}>
                 <th style={{ width: 140 }}>Weekend</th>

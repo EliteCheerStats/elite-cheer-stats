@@ -204,13 +204,17 @@ export default function ResultsExplorerPage() {
       return true;
     });
 
-    // Sorting
-    const scoreFor = (r: Row) => {
-      if (sortBy === "event_score") return toNum(pick(r, eventScoreKeys, null));
-      if (sortBy === "performance_score") return toNum(pick(r, perfScoreKeys, null));
-      return toNum(pick(r, rawScoreKeys, null));
-    };
+   // Sorting
+  const scoreFor = (r: Row): number => {
+    const n =
+      sortBy === "event_score"
+       ? toNum(pick(r, eventScoreKeys, undefined))
+       : sortBy === "performance_score"
+          ? toNum(pick(r, perfScoreKeys, undefined))
+          : toNum(pick(r, rawScoreKeys, undefined));
 
+     return n ?? Number.NEGATIVE_INFINITY;
+  };
     out.sort((a, b) => {
       const av = scoreFor(a) ?? -Infinity;
       const bv = scoreFor(b) ?? -Infinity;

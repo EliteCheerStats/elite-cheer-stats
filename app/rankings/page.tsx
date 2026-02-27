@@ -323,7 +323,7 @@ export default function RankingsPage() {
     setFlexMode("Any");          // match your default
     setSize("Any");              // match your default
     setIncludeOneComp(false);    // or true, whatever default is
-    setQuery("");                // your search input state
+    
   };
   // Data
   const [rows, setRows] = useState<Row[]>([]);
