@@ -38,7 +38,7 @@ export default function Home() {
           <Link href="/comp-builder" className="p-6 bg-teal-700 rounded-xl hover:bg-teal-600 transition">
             <h2 className="text-2xl font-semibold">Comp Builder</h2>
             <p className="mt-2">
-              Build your dream competition matchup.
+              Build your specific competition matchup.
             </p>
           </Link>
         </div>

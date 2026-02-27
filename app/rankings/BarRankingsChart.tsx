@@ -22,12 +22,21 @@ export function BarRankingsChart({ rankings }: { rankings: RankingRow[] }) {
     score: toNum(r.avg_score),
   }));
 
-  // chart box
-  const width = 1100;
-  const height = 360;
-  const pad = { top: 18, right: 300, bottom: 35, left: 320 };
-  const innerW = width - pad.left - pad.right;
-  const innerH = height - pad.top - pad.bottom;
+  // chart box (responsive)
+const isMobile = typeof window !== "undefined" && window.innerWidth < 640;
+
+// Keep viewBox width stable (fine), but reduce padding on mobile
+const width = 1100;
+
+    // Make the chart taller on mobile so it fills more screen
+    const height = isMobile ? 520 : 360;
+
+    const pad = isMobile
+     ? { top: 18, right: 18, bottom: 35, left: 140 }   // tighter labels + more room for bars
+    : { top: 18, right: 300, bottom: 35, left: 320 }; // desktop
+
+    const innerW = width - pad.left - pad.right;
+    const innerH = height - pad.top - pad.bottom;
   
 
   const scores = data.map((d) => d.score);

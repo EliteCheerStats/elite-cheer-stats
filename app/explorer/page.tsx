@@ -39,24 +39,26 @@ export default function ResultsExplorerPage() {
   const [age, setAge] = useState<string>("All"); // "All" or Tiny/Mini/Youth/Junior/Senior/U16/U18
 
   // Other filters
-  const [round, setRound] = useState<string>("All");
   const [d2Mode, setD2Mode] = useState<"Any" | "D2Only" | "NonD2Only">("Any");
   const [flexMode, setFlexMode] = useState<"Any" | "FlexOnly" | "NonFlexOnly">("Any");
   const [size, setSize] = useState<"Any" | "Small" | "Medium" | "Large" | "X-Small" | "X-Large">("Any");
   const [search, setSearch] = useState<string>("");
-
-  // Display
-  const [sortBy, setSortBy] = useState<"event_score" | "performance_score" | "raw_score">("event_score");
-  const [limit, setLimit] = useState<number>(200);
+  const sortBy = "event_score" as const;
+  
+  const clip: React.CSSProperties = {
+   whiteSpace: "nowrap",
+   overflow: "hidden",
+   textOverflow: "ellipsis",
+  };
 
   // Column candidates
   const eventNameKeys = ["event_name", "event", "event_title", "competition_name", "competition", "event_display_name", "event_id"];
   const programKeys = ["program", "program_name", "gym", "gym_name"];
   const teamKeys = ["team", "team_name"];
+  
 
   // Score candidates
   const eventScoreKeys = ["event_score", "event_total", "total_score", "score"];
-  const perfScoreKeys = ["performance_score", "performance", "perf_score"];
   const rawScoreKeys = ["raw_score", "raw", "rawScore", "score_raw"];
 
   const ageOptions = ["All", "Tiny", "Mini", "Youth", "Junior", "Senior", "U16", "U18"];
@@ -79,7 +81,6 @@ export default function ResultsExplorerPage() {
         setError(error);
         return;
       }
-
       const options = (data ?? [])
         .map((r: any) => r.weekend_date)
         .filter(Boolean);
@@ -125,12 +126,9 @@ export default function ResultsExplorerPage() {
       }
 
       // Safety caps
+      // Fixed query limit (no UI control)
       const effectiveLimit =
-        s.length >= 2
-          ? 5000
-          : (weekendDate === ALL_WEEKENDS && level === "All"
-              ? Math.max(limit, 2000)
-              : Math.max(limit, 1000));
+        weekendDate === ALL_WEEKENDS && level === "All" ? 2000 : 1000;
 
       const { data, error } = await q.limit(Math.min(effectiveLimit, 20000));
 
@@ -150,7 +148,7 @@ export default function ResultsExplorerPage() {
     return () => {
       cancelled = true;
     };
-  }, [weekendDate, level, limit, search]);
+  }, [weekendDate, level, search]);
 
   // Client-side filtering (age/d2/flex/size/round)
   const derived = useMemo(() => {
@@ -170,9 +168,7 @@ export default function ResultsExplorerPage() {
         }
       }
 
-      // Round filter
-      const rRound = String(pick(r, ["round", "round_name"], ""));
-      if (round !== "All" && rRound !== round) return false;
+     
 
       // D2 / Flex (prefer normalized columns)
       const isD2 = Boolean(r.is_d2 ?? false);
@@ -211,8 +207,6 @@ const scoreFor = (r: Row): number => {
       case "event_score":
         return toNum(pick(r, eventScoreKeys, undefined));
 
-      case "performance_score":
-        return toNum(pick(r, perfScoreKeys, undefined));
 
       default:
         return toNum(pick(r, rawScoreKeys, undefined));
@@ -222,8 +216,8 @@ const scoreFor = (r: Row): number => {
   return n ?? Number.NEGATIVE_INFINITY;
 };
 
-    return out.slice(0, Math.max(1, Math.min(limit, 5000)));
-  }, [rows, age, round, d2Mode, flexMode, size, search, sortBy, limit]);
+    return out.slice(0, 5000); // safety cap only
+  }, [rows, age, d2Mode, flexMode, size, search]);
 
   const summary = useMemo(() => {
     const total = derived.length;
@@ -249,7 +243,11 @@ const scoreFor = (r: Row): number => {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(6, minmax(0, 1fr))", gap: 12, margin: "12px 0 18px" }}>
         <label style={{ display: "grid", gap: 6 }}>
           <span style={{ fontWeight: 650 }}>Weekend</span>
-          <select value={weekendDate} onChange={(e) => setWeekendDate(e.target.value)} style={{ padding: "8px 10px" }}>
+          <select
+            value={weekendDate}
+            onChange={(e) => setWeekendDate(e.target.value)}
+            style={{ padding: "8px 10px", width: "100%", maxWidth: 220 }}
+          >
             <option value={ALL_WEEKENDS}>All Weekends</option>
             {weekendOptions.map((d) => (
               <option key={d} value={d}>{d}</option>
@@ -259,7 +257,11 @@ const scoreFor = (r: Row): number => {
 
         <label style={{ display: "grid", gap: 6 }}>
           <span style={{ fontWeight: 650 }}>Level</span>
-          <select value={level} onChange={(e) => setLevel(e.target.value)} style={{ padding: "8px 10px" }}>
+          <select
+            value={level}
+            onChange={(e) => setLevel(e.target.value)}
+            style={{ padding: "8px 10px", width: "100%", maxWidth: 200 }}
+          >
             <option value="All">All Levels</option>
             {[1, 2, 3, 4, 5, 6].map((n) => (
               <option key={n} value={`L${n}`}>{`L${n}`}</option>
@@ -269,7 +271,11 @@ const scoreFor = (r: Row): number => {
 
         <label style={{ display: "grid", gap: 6 }}>
           <span style={{ fontWeight: 650 }}>Age</span>
-          <select value={age} onChange={(e) => setAge(e.target.value)} style={{ padding: "8px 10px" }}>
+          <select
+            value={age}
+            onChange={(e) => setAge(e.target.value)}
+            style={{ padding: "8px 10px", width: "100%", maxWidth: 180 }}
+          >
             {ageOptions.map((a) => (
               <option key={a} value={a}>{a}</option>
             ))}
@@ -277,19 +283,12 @@ const scoreFor = (r: Row): number => {
         </label>
 
         <label style={{ display: "grid", gap: 6 }}>
-          <span style={{ fontWeight: 650 }}>Round</span>
-          <select value={round} onChange={(e) => setRound(e.target.value)} style={{ padding: "8px 10px" }}>
-            <option value="All">All</option>
-            <option value="Finals">Finals</option>
-            <option value="Prelims">Prelims</option>
-            <option value="Semis">Semis</option>
-            <option value="UNKNOWN_ROUND">UNKNOWN_ROUND</option>
-          </select>
-        </label>
-
-        <label style={{ display: "grid", gap: 6 }}>
           <span style={{ fontWeight: 650 }}>D2</span>
-          <select value={d2Mode} onChange={(e) => setD2Mode(e.target.value as any)} style={{ padding: "8px 10px" }}>
+          <select
+            value={d2Mode}
+            onChange={(e) => setD2Mode(e.target.value as "Any" | "D2Only" | "NonD2Only")}
+            style={{ padding: "8px 10px", width: "100%", maxWidth: 140 }}
+          >
             <option value="Any">Any</option>
             <option value="D2Only">D2 only</option>
             <option value="NonD2Only">Non-D2 only</option>
@@ -298,7 +297,11 @@ const scoreFor = (r: Row): number => {
 
         <label style={{ display: "grid", gap: 6 }}>
           <span style={{ fontWeight: 650 }}>Flex</span>
-          <select value={flexMode} onChange={(e) => setFlexMode(e.target.value as any)} style={{ padding: "8px 10px" }}>
+          <select
+            value={flexMode}
+            onChange={(e) => setFlexMode(e.target.value as "Any" | "FlexOnly" | "NonFlexOnly")}
+            style={{ padding: "8px 10px", width: "100%", maxWidth: 140 }}
+          >
             <option value="Any">Any</option>
             <option value="FlexOnly">Flex only</option>
             <option value="NonFlexOnly">Non-Flex only</option>
@@ -306,8 +309,16 @@ const scoreFor = (r: Row): number => {
         </label>
 
         <label style={{ display: "grid", gap: 6 }}>
-          <span style={{ fontWeight: 650 }}>Size (effective)</span>
-          <select value={size} onChange={(e) => setSize(e.target.value as any)} style={{ padding: "8px 10px" }}>
+          <span style={{ fontWeight: 650 }}>Size</span>
+          <select
+            value={size}
+            onChange={(e) =>
+              setSize(
+                e.target.value as "Any" | "X-Small" | "Small" | "Medium" | "Large" | "X-Large"
+               )
+            }
+            style={{ padding: "8px 10px", width: "100%", maxWidth: 180 }}
+          >
             <option value="Any">Any</option>
             <option value="X-Small">X-Small</option>
             <option value="Small">Small</option>
@@ -317,14 +328,7 @@ const scoreFor = (r: Row): number => {
           </select>
         </label>
 
-        <label style={{ display: "grid", gap: 6 }}>
-          <span style={{ fontWeight: 650 }}>Sort</span>
-          <select value={sortBy} onChange={(e) => setSortBy(e.target.value as any)} style={{ padding: "8px 10px" }}>
-            <option value="event_score">Event score</option>
-            <option value="performance_score">Performance score</option>
-            <option value="raw_score">Raw score</option>
-          </select>
-        </label>
+
 
         <label style={{ gridColumn: "1 / span 4", display: "grid", gap: 6 }}>
           <span style={{ fontWeight: 650 }}>Search (team / program / division / event)</span>
@@ -336,17 +340,7 @@ const scoreFor = (r: Row): number => {
           />
         </label>
 
-        <label style={{ gridColumn: "5 / span 2", display: "grid", gap: 6 }}>
-          <span style={{ fontWeight: 650 }}>Limit (display)</span>
-          <input
-            type="number"
-            value={limit}
-            min={1}
-            max={5000}
-            onChange={(e) => setLimit(Number(e.target.value))}
-            style={{ padding: "8px 10px" }}
-          />
-        </label>
+        
       </div>
 
       {error && (
@@ -359,54 +353,35 @@ const scoreFor = (r: Row): number => {
       {!loading && !error && derived.length === 0 && <p>No rows match your filters.</p>}
 
       {!loading && !error && derived.length > 0 && (
-        <div style={{ overflowX: "auto" }}>
+        <div style={{ overflowX: "auto", width: "100%", position: "relative" }}>
           <table
-            cellPadding={14}
+            cellPadding={8}
              style={{
               borderCollapse: "collapse",
                tableLayout: "fixed",
-               width: 1500,
+               width: "100%",
              }}
 >
             <thead>
               <tr style={{ textAlign: "left", borderBottom: "2px solid #ddd" }}>
-                <th style={{ width: 140 }}>Weekend</th>
-                <th style={{ width: 260 }}>Event</th>
-                <th style={{ width: 180 }}>Division</th>
-                <th style={{ width: 100 }}>Round</th>
-                <th style={{ width: 180 }}>Program</th>
-                <th style={{ width: 180 }}>Team</th>
-                <th style={{ width: 80 }}>Size</th>
-                <th style={{ textAlign: "right", whiteSpace: "nowrap", width: 90 }}>Raw</th>
-                <th style={{ textAlign: "right", whiteSpace: "nowrap", width: 80 }}>Ded</th>
-                <th style={{ textAlign: "right", whiteSpace: "nowrap", width: 90 }}>Perf</th>
-                <th style={{ textAlign: "right", whiteSpace: "nowrap", width: 110 }}>Event</th>
+                <th style={{ width: "10%" }}>Weekend</th>
+                <th style={{ width: "30%" }}>Event</th>
+                <th style={{ width: "22%" }}>Division</th>
+                <th style={{ width: "12%" }}>Program</th>
+                <th style={{ width: "14%" }}>Team</th>
+                <th style={{ textAlign: "right", whiteSpace: "nowrap", width: "10%" }}>Event Score</th>
               </tr>
             </thead>
             <tbody>
               {derived.map((r, idx) => (
-                <tr key={`${idx}`} style={{ borderBottom: "1px solid #1f2937" }}>
-                  <td>{String(r.weekend_date ?? "—")}</td>
-                  <td style={{ fontWeight: 750 }}>{String(pick(r, eventNameKeys, "—"))}</td>
-                  <td>{String(r.division ?? "—")}</td>
-                  <td>{String(r.round ?? "—")}</td>
-                  <td>{String(pick(r, programKeys, "—"))}</td>
-                  <td style={{ fontWeight: 750 }}>{String(pick(r, teamKeys, "—"))}</td>
-                  <td style={{ fontWeight: 900 }}>{String(r.size_effective ?? "—")}</td>
-                  <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
-                    {r.raw_score != null ? Number(r.raw_score).toFixed(2) : "-"}
-                  </td>
-
-                  <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
-                   {r.deductions != null ? Number(r.deductions).toFixed(2) : "-"}
-                  </td>
-
-                  <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
-                    {r.performance_score != null ? Number(r.performance_score).toFixed(2) : "-"}
-                  </td>
-
-                  <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", fontWeight: 900 }}>
-                    {r.event_score != null ? Number(r.event_score).toFixed(3) : "-"}
+                <tr key={r.id}>
+                  <td>{r.weekend_date}</td>
+                  <td style={clip}>{r.event_name}</td>
+                  <td style={clip}>{r.division}</td>
+                  <td style={clip}>{r.program}</td>
+                  <td style={{ ...clip, fontWeight: 600 }}>{r.team}</td>
+                  <td style={{ textAlign: "right", fontWeight: 700 }}>
+                    {Number(r.event_score)}
                   </td>
                 </tr>
               ))}
