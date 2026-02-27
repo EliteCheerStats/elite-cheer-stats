@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #020617;  /* deep slate */
+  --foreground: #e2e8f0;  /* slate-200 */
 }
 
 @theme inline {
@@ -23,4 +23,22 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+html, body {
+  height: 100%;
+  background: #020617; /* very dark slate */
+  color: white;
+}
+/* ===== Global Select Fix (Dark Theme Safe) ===== */
+
+select {
+  background-color: #0b1220;   /* dark closed select */
+  color: #ffffff;              /* selected value text */
+  border: 1px solid #2b2b2b;
+}
+
+/* Dropdown list options */
+select option {
+  background-color: #ffffff;   /* dropdown menu background */
+  color: #111111;              /* readable text */
 }
