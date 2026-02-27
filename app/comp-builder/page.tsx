@@ -23,6 +23,16 @@ export default function CompBuilderPage() {
   const [unlocked, setUnlocked] = useState(false);
   const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
   const [msg, setMsg] = useState("");
+  const ROLE_OPTIONS = ["Parent", "Coach", "Athlete", "Fan"] as const;
+  type Role = (typeof ROLE_OPTIONS)[number];
+
+  const [roles, setRoles] = useState<Role[]>([]);
+
+  const toggleRole = (role: Role) => {
+    setRoles((prev) =>
+      prev.includes(role) ? prev.filter((r) => r !== role) : [...prev, role]
+   );
+  };
 
   useEffect(() => {
     try {
@@ -61,6 +71,7 @@ export default function CompBuilderPage() {
       const { error } = await supabase.from("waitlist").insert({
         email: email.toLowerCase(),
         source: "comp_builder_gate",
+        roles: roles.length ? roles : null,
       });
 
       // If duplicate, treat as fine
@@ -109,6 +120,26 @@ export default function CompBuilderPage() {
               {msg}
             </div>
           )}
+
+          <div className="mt-4">
+            <div className="text-sm text-white/80">I’m a:</div>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              {ROLE_OPTIONS.map((role) => (
+                <label
+                  key={role}
+                  className="flex items-center gap-2 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm"
+                >
+                  <input
+                    type="checkbox"
+                    checked={roles.includes(role)}
+                    onChange={() => toggleRole(role)}
+                    className="h-4 w-4"
+                   />
+                  <span>{role}</span>
+                </label>
+               ))}
+             </div>
+            </div>
 
           <button
             onClick={unlock}
