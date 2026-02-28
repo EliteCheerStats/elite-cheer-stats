@@ -6,10 +6,10 @@ import { BarRankingsChart } from "./BarRankingsChart";
 
 type Row = Record<string, any>;
 
-function pick(row: Row, candidates: string[], fallback = "") {
+function pick<T = any>(row: Row, candidates: string[], fallback: T): T {
   for (const key of candidates) {
     const v = row[key];
-    if (v !== undefined && v !== null && String(v).trim() !== "") return v;
+    if (v !== undefined && v !== null && String(v).trim() !== "") return v as T;
   }
   return fallback;
 }
@@ -58,7 +58,6 @@ const DEFAULT_FILTERS: Filters = {
 const SEASON_START = "2025-12-01";
 
 // ---------- Parsing helpers ----------
-
 function inferLevelFromDivision(divisionRaw: string): string | null {
   const d = String(divisionRaw ?? "");
   const m = d.match(/^\s*L\s*([1-7])\b/i) || d.match(/^\s*L([1-7])\b/i);
@@ -205,9 +204,7 @@ export default function RankingsPage() {
       const s = filters.search.trim();
       if (s.length >= 2) {
         const esc = s.replace(/,/g, "");
-        q = q.or(
-          `team.ilike.%${esc}%,program.ilike.%${esc}%,division.ilike.%${esc}%,event_name.ilike.%${esc}%`
-        );
+        q = q.or(`team.ilike.%${esc}%,program.ilike.%${esc}%,division.ilike.%${esc}%,event_name.ilike.%${esc}%`);
       }
 
       const { data, error } = await q;
@@ -290,14 +287,12 @@ export default function RankingsPage() {
       const track = buildTrackKey(meta);
       if (!track) continue;
 
-      // team_id + track is correct and stable in your data
+      // Prefer team_id (your data is stable), fallback to program_id+name
       const teamId = String(r.team_id ?? "").trim();
       const programId = String(r.program_id ?? "").trim();
-      const groupKey = teamId
-        ? `${teamId}__${track}`
-        : `${programId || normalize(program)}__${normalize(team)}__${track}`;
+      const groupKey = teamId ? `${teamId}__${track}` : `${programId || normalize(program)}__${normalize(team)}__${track}`;
 
-      const score = toNum(pick(r, eventScoreKeys, "0"));
+      const score = toNum(pick(r, eventScoreKeys, 0));
 
       const eventId = String(pick(r, eventIdKeys, "")).trim();
       const weekend = String(pick(r, weekendKeys, "")).trim();
@@ -305,11 +300,7 @@ export default function RankingsPage() {
       const sourceUrl = String(pick(r, sourceUrlKeys, "")).trim();
 
       // Dedup: event_id -> source_url -> event_name+weekend
-      const compKey = eventId
-        ? `event:${eventId}`
-        : sourceUrl
-          ? `url:${sourceUrl}`
-          : `name:${eventName}__wk:${weekend}`;
+      const compKey = eventId ? `event:${eventId}` : sourceUrl ? `url:${sourceUrl}` : `name:${eventName}__wk:${weekend}`;
 
       let agg = map.get(groupKey);
       if (!agg) {
@@ -372,10 +363,9 @@ export default function RankingsPage() {
 
   const ageOptions: AgeOpt[] = ["All", "Tiny", "Mini", "Youth", "Junior", "Senior", "U16", "U18", "Open"];
 
-  const emptyHint =
-    filters.requireTwoPlus
-      ? "No teams match. Default excludes teams with only 1 competition — toggle '2+ comps' off to include them."
-      : "No teams match your current filters.";
+  const emptyHint = filters.requireTwoPlus
+    ? "No teams match. Default excludes teams with only 1 competition — toggle '2+ comps' off to include them."
+    : "No teams match your current filters.";
 
   return (
     <main style={{ padding: 20, maxWidth: 1200, margin: "0 auto", color: "white" }}>
@@ -446,7 +436,7 @@ export default function RankingsPage() {
             >
               {ageOptions.map((a) => (
                 <option key={a} value={a}>
-                  {a === "All" ? "All" : a}
+                  {a}
                 </option>
               ))}
             </select>
@@ -548,9 +538,14 @@ export default function RankingsPage() {
         </div>
       </div>
 
-      {/* Chart */}
+      {/* Chart (mobile: same behavior as Team Search: no shrinking, horizontal scroll) */}
       <div style={{ maxWidth: 1100, margin: "0 auto 14px" }}>
-        <BarRankingsChart items={chartTop10} />
+        <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+          {/* minWidth keeps it readable on mobile; swipe to see full chart */}
+          <div style={{ minWidth: 900 }}>
+            <BarRankingsChart items={chartTop10} />
+          </div>
+        </div>
       </div>
 
       {/* Table */}
@@ -593,7 +588,9 @@ export default function RankingsPage() {
                     <td style={{ padding: "10px 8px", whiteSpace: "nowrap" }}>{t.program}</td>
                     <td style={{ padding: "10px 8px", whiteSpace: "nowrap", opacity: 0.9 }}>{t.bucket}</td>
                     <td style={{ padding: "10px 8px", textAlign: "right", whiteSpace: "nowrap" }}>{t.avg.toFixed(3)}</td>
-                    <td style={{ padding: "10px 8px", textAlign: "right", whiteSpace: "nowrap", opacity: 0.85 }}>{t.comps}</td>
+                    <td style={{ padding: "10px 8px", textAlign: "right", whiteSpace: "nowrap", opacity: 0.85 }}>
+                      {t.comps}
+                    </td>
                   </tr>
                 ))}
               </tbody>
