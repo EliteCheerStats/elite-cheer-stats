@@ -1,377 +1,611 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { BarRankingsChart } from "./BarRankingsChart";
 
+type Row = Record<string, any>;
 
+function pick(row: Row, candidates: string[], fallback = "") {
+  for (const key of candidates) {
+    const v = row[key];
+    if (v !== undefined && v !== null && String(v).trim() !== "") return v;
+  }
+  return fallback;
+}
 
-type NormRow = {
-  weekend_date: string | null;
-  division: string | null;
-  program: string | null;
-  team: string | null;
-  event_score: number | string | null;
+function toNum(v: any): number {
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function normalize(s: string) {
+  return String(s ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function titleCase(s: string) {
+  const t = normalize(s);
+  if (!t) return "";
+  return t.replace(/\b\w/g, (m) => m.toUpperCase());
+}
+
+type SizeOpt = "Any" | "X-Small" | "Small" | "Medium" | "Large" | "X-Large";
+type D2Mode = "Any" | "D2Only" | "NonD2Only";
+type FlexMode = "Any" | "FlexOnly" | "NonFlexOnly";
+type LevelOpt = "All" | "L1" | "L2" | "L3" | "L4" | "L5" | "L6" | "L7";
+type AgeOpt = "All" | "Tiny" | "Mini" | "Youth" | "Junior" | "Senior" | "U16" | "U18" | "Open";
+
+type Filters = {
+  search: string;
+  level: LevelOpt;
+  age: AgeOpt;
+  d2Mode: D2Mode;
+  flexMode: FlexMode;
+  size: SizeOpt;
+  requireTwoPlus: boolean; // default ON
 };
 
-type RankedTeam = {
-  key: string;
-  division: string;
-  program: string;
-  team: string;
-  events: number;
-  avg_event_score: number;
-  last_weekend: string | null;
+const DEFAULT_FILTERS: Filters = {
+  search: "",
+  level: "All",
+  age: "All",
+  d2Mode: "Any",
+  flexMode: "Any",
+  size: "Any",
+  requireTwoPlus: true,
 };
 
-function toNum(v: any): number | null {
-  if (v === null || v === undefined) return null;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
+const SEASON_START = "2025-12-01";
+
+// ---------- Parsing helpers ----------
+
+function inferLevelFromDivision(divisionRaw: string): string | null {
+  const d = String(divisionRaw ?? "");
+  const m = d.match(/^\s*L\s*([1-7])\b/i) || d.match(/^\s*L([1-7])\b/i);
+  return m ? `L${m[1]}` : null;
 }
 
-function fmt3(v: number): string {
-  return v.toFixed(3);
+function inferAgeFromDivision(divisionRaw: string): string | null {
+  const d = normalize(divisionRaw);
+  const candidates: Array<[string, string]> = [
+    ["tiny", "Tiny"],
+    ["mini", "Mini"],
+    ["youth", "Youth"],
+    ["junior", "Junior"],
+    ["senior", "Senior"],
+    ["u16", "U16"],
+    ["u18", "U18"],
+    ["open", "Open"],
+  ];
+  for (const [k, label] of candidates) {
+    if (d.includes(k)) return label;
+  }
+  return null;
 }
 
-function safeStr(v: any): string {
-  return (v ?? "").toString();
+function cleanSizeAny(v: any): Exclude<SizeOpt, "Any"> | null {
+  const s0 = normalize(v);
+  if (!s0) return null;
+
+  const s = s0.replace(/-/g, " ").replace(/\s+/g, " ").trim();
+  if (s === "x small" || s === "xsmall") return "X-Small";
+  if (s === "small") return "Small";
+  if (s === "medium") return "Medium";
+  if (s === "large") return "Large";
+  if (s === "x large" || s === "xlarge") return "X-Large";
+  return null;
 }
 
-function cmpDesc(a: number, b: number) {
-  return b - a;
+function inferSizeFromDivision(divisionRaw: string): Exclude<SizeOpt, "Any"> | null {
+  const d = normalize(divisionRaw);
+  if (d.includes("x-small") || d.includes("x small") || d.includes("xsmall")) return "X-Small";
+  if (d.includes("x-large") || d.includes("x large") || d.includes("xlarge")) return "X-Large";
+  if (d.includes(" small")) return "Small";
+  if (d.includes(" medium")) return "Medium";
+  if (d.includes(" large")) return "Large";
+  return null;
 }
 
-function BarChart({ data }: { data: { label: string; value: number }[] }) {
-  const wrapRef = useRef<HTMLDivElement | null>(null);
-  const [wrapW, setWrapW] = useState<number>(900);
+function inferIsD2FromDivision(divisionRaw: string): boolean {
+  const d = normalize(divisionRaw);
+  return d.includes(" d2") || d.includes("d2 ");
+}
 
-  useEffect(() => {
-    const el = wrapRef.current;
-    if (!el) return;
+function inferIsFlexFromDivision(divisionRaw: string): boolean {
+  const d = normalize(divisionRaw);
+  return d.includes(" flex");
+}
 
-    const ro = new ResizeObserver((entries) => {
-      const w = entries[0]?.contentRect?.width ?? 900;
-      setWrapW(Math.max(320, Math.floor(w)));
-    });
+function parseMeta(r: Row) {
+  const division = String(pick(r, ["division"], ""));
+  const level = inferLevelFromDivision(division);
 
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
+  const ageBucket = String(r.age_bucket ?? "");
+  const age = ageBucket ? titleCase(ageBucket) : inferAgeFromDivision(division);
 
-  const isMobile = wrapW < 640;
+  const isD2 = r.is_d2 !== undefined && r.is_d2 !== null ? Boolean(r.is_d2) : inferIsD2FromDivision(division);
+  const isFlex = r.is_flex !== undefined && r.is_flex !== null ? Boolean(r.is_flex) : inferIsFlexFromDivision(division);
 
-  // internal drawing size (viewBox)
-  const W = 1000;
-  const H = isMobile ? 520 : 360;
+  const size =
+    cleanSizeAny(r.size_effective) ||
+    cleanSizeAny(r.size_raw) ||
+    cleanSizeAny(pick(r, ["size", "size_bucket"], "")) ||
+    inferSizeFromDivision(division);
 
-  const pad = isMobile
-    ? { top: 18, right: 16, bottom: 40, left: 150 }
-    : { top: 18, right: 30, bottom: 40, left: 260 };
+  return { division, level, age, isD2, isFlex, size };
+}
 
-  const innerW = W - pad.left - pad.right;
-  const innerH = H - pad.top - pad.bottom;
+function buildTrackKey(meta: { level: string | null; age: string | null; isFlex: boolean; isD2: boolean }) {
+  const parts: string[] = [];
+  if (meta.level) parts.push(meta.level);
+  if (meta.age) parts.push(meta.age);
+  if (meta.isFlex) parts.push("Flex");
+  if (meta.isD2) parts.push("D2");
+  return parts.join(" ").trim();
+}
 
-  const values = data.map((d) => d.value);
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const span = Math.max(0.001, max - min);
-
-  const barH = innerH / Math.max(1, data.length);
-  const barInnerH = Math.max(isMobile ? 16 : 12, barH * 0.7);
-
-  const x = (v: number) => ((v - min) / span) * innerW;
-
-  const clipStyle: React.CSSProperties = {
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-  };
-
-  return (
-    <div
-      ref={wrapRef}
-      style={{
-        width: "100%",
-        border: "1px solid rgba(255,255,255,0.10)",
-        borderRadius: 12,
-        padding: 12,
-        background: "rgba(255,255,255,0.03)",
-      }}
-    >
-      <div style={{ fontWeight: 750, marginBottom: 8 }}>Top 10 Teams (Avg Event Score)</div>
-
-      <svg
-        viewBox={`0 0 ${W} ${H}`}
-        width="100%"
-        height={H}
-        preserveAspectRatio="xMidYMid meet"
-      >
-        {/* x-axis baseline */}
-        <line
-          x1={pad.left}
-          x2={pad.left + innerW}
-          y1={pad.top + innerH}
-          y2={pad.top + innerH}
-          stroke="rgba(255,255,255,0.18)"
-          strokeWidth={1}
-        />
-
-        {/* bars */}
-        {data.map((d, i) => {
-          const y = pad.top + i * barH + (barH - barInnerH) / 2;
-          const w = x(d.value);
-
-          return (
-            <g key={d.label + i}>
-              {/* label */}
-              <foreignObject
-                x={12}
-                y={y}
-                width={pad.left - 18}
-                height={barInnerH}
-              >
-                <div
-                  style={{
-                    ...clipStyle,
-                    fontSize: isMobile ? 12 : 13,
-                    lineHeight: `${barInnerH}px`,
-                    color: "rgba(255,255,255,0.9)",
-                  }}
-                  title={d.label}
-                >
-                  {d.label}
-                </div>
-              </foreignObject>
-
-              {/* bar */}
-              <rect
-                x={pad.left}
-                y={y}
-                width={Math.max(2, w)}
-                height={barInnerH}
-                rx={8}
-                ry={8}
-                fill="rgba(45, 212, 191, 0.55)" // teal-ish, consistent with your theme
-              />
-
-              {/* value */}
-              <text
-                x={pad.left + w + 8}
-                y={y + barInnerH * 0.72}
-                fill="rgba(255,255,255,0.85)"
-                fontSize={isMobile ? 12 : 13}
-              >
-                {fmt3(d.value)}
-              </text>
-            </g>
-          );
-        })}
-      </svg>
-    </div>
-  );
+/**
+ * Latest non-null size wins; if none recently, last known size ever; if never any size => null.
+ */
+function resolveTeamSize(rowsDescByDate: Array<{ weekend: string; size: Exclude<SizeOpt, "Any"> | null }>) {
+  const latestNonNull = rowsDescByDate.find((x) => !!x.size)?.size ?? null;
+  if (latestNonNull) return latestNonNull;
+  const anyKnown = rowsDescByDate.find((x) => !!x.size)?.size ?? null;
+  return anyKnown; // null if never any size
 }
 
 export default function RankingsPage() {
-  const [loading, setLoading] = useState(true);
-  const [rawRows, setRawRows] = useState<NormRow[]>([]);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
 
-  // MVP default guardrail: avoid tiny-sample noise
-  const minEvents = 1;
+  const [rows, setRows] = useState<Row[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<any>(null);
+
+  const programKeys = ["program", "program_name", "gym", "gym_name"];
+  const teamKeys = ["team", "team_name"];
+  const eventScoreKeys = ["event_score", "event_total", "total_score", "score"];
+  const eventNameKeys = ["event_name", "event", "event_title", "competition_name", "competition", "event_display_name"];
+  const eventIdKeys = ["event_id", "eventId", "competition_id"];
+  const weekendKeys = ["weekend_date", "weekend"];
+  const sourceUrlKeys = ["source_url", "sourceUrl", "url"];
+
+  const setFilter = <K extends keyof Filters>(key: K, value: Filters[K]) => {
+    setFilters((f) => ({ ...f, [key]: value }));
+  };
+  const clearFilters = () => setFilters(DEFAULT_FILTERS);
+
+  const controlLabel: React.CSSProperties = { fontSize: 12, opacity: 0.75 };
+  const controlBase: React.CSSProperties = {
+    padding: "10px 12px",
+    borderRadius: 10,
+    background: "rgba(255,255,255,0.06)",
+    border: "1px solid rgba(255,255,255,0.12)",
+    color: "white",
+  };
 
   useEffect(() => {
     let cancelled = false;
 
-    (async () => {
-      try {
-        setLoading(true);
-        setErrorMsg(null);
+    async function loadRows() {
+      setLoading(true);
+      setError(null);
 
-        // No filters: just grab a large slice of normalized results
-        const { data, error } = await supabase
-          .from("v_results_normalized")
-          .select("weekend_date, division, program, team, event_score")
-          .order("weekend_date", { ascending: false })
-          .range(0, 49999);
+      let q = supabase
+        .from("v_results_normalized")
+        .select("*")
+        .gte("weekend_date", SEASON_START)
+        .order("weekend_date", { ascending: false });
 
-        if (cancelled) return;
-
-        if (error) {
-          setErrorMsg(error.message);
-          setRawRows([]);
-          return;
-        }
-
-        setRawRows((data ?? []) as NormRow[]);
-      } catch (e: any) {
-        if (!cancelled) {
-          setErrorMsg(e?.message ?? "Unknown error");
-          setRawRows([]);
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
+      // Server-side level filter
+      if (filters.level !== "All") {
+        q = q.ilike("division", `${filters.level}%`);
       }
-    })();
+
+      // Server-side search (optional)
+      const s = filters.search.trim();
+      if (s.length >= 2) {
+        const esc = s.replace(/,/g, "");
+        q = q.or(
+          `team.ilike.%${esc}%,program.ilike.%${esc}%,division.ilike.%${esc}%,event_name.ilike.%${esc}%`
+        );
+      }
+
+      const { data, error } = await q;
+
+      if (cancelled) return;
+
+      if (error) {
+        setError(error);
+        setRows([]);
+      } else {
+        setError(null);
+        setRows(data ?? []);
+      }
+
+      setLoading(false);
+    }
+
+    loadRows();
 
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [filters.level, filters.search]);
 
-  const ranked = useMemo<RankedTeam[]>(() => {
-    // Aggregate by (division+program+team)
-    const map = new Map<
-      string,
-      { division: string; program: string; team: string; sum: number; ct: number; last: string | null }
-    >();
+  // Row-level filters only (NOT size)
+  const filteredRows = useMemo(() => {
+    const q = filters.search.trim().toLowerCase();
+    const ageNorm = normalize(filters.age);
 
-    for (const r of rawRows) {
-      const division = safeStr(r.division).trim();
-      const program = safeStr(r.program).trim();
-      const team = safeStr(r.team).trim();
+    return rows.filter((r) => {
+      const meta = parseMeta(r);
 
-      if (!division || !program || !team) continue;
-
-      const score = toNum(r.event_score);
-      if (score === null) continue;
-
-      const key = `${division}|||${program}|||${team}`;
-      const cur = map.get(key);
-
-      const wk = r.weekend_date ?? null;
-      if (!cur) {
-        map.set(key, { division, program, team, sum: score, ct: 1, last: wk });
-      } else {
-        cur.sum += score;
-        cur.ct += 1;
-
-        // keep most recent weekend (strings sort fine if ISO dates)
-        if (!cur.last || (wk && wk > cur.last)) cur.last = wk;
+      if (filters.age !== "All") {
+        const rowAge = String(r.age_bucket ?? "");
+        if (rowAge) {
+          if (normalize(rowAge) !== ageNorm) return false;
+        } else {
+          if (!normalize(meta.division).includes(ageNorm)) return false;
+        }
       }
+
+      if (filters.d2Mode === "D2Only" && !meta.isD2) return false;
+      if (filters.d2Mode === "NonD2Only" && meta.isD2) return false;
+
+      if (filters.flexMode === "FlexOnly" && !meta.isFlex) return false;
+      if (filters.flexMode === "NonFlexOnly" && meta.isFlex) return false;
+
+      // Search fallback for short queries
+      if (q) {
+        const eventName = String(pick(r, eventNameKeys, "")).toLowerCase();
+        const program = String(pick(r, programKeys, "")).toLowerCase();
+        const team = String(pick(r, teamKeys, "")).toLowerCase();
+        const div = meta.division.toLowerCase();
+        if (!eventName.includes(q) && !program.includes(q) && !team.includes(q) && !div.includes(q)) return false;
+      }
+
+      return true;
+    });
+  }, [rows, filters.age, filters.d2Mode, filters.flexMode, filters.search]);
+
+  // Aggregate teams, compute avg across ALL comps, determine final size, then apply size filter at team-level
+  const teamRankings = useMemo(() => {
+    type Agg = {
+      key: string;
+      program: string;
+      team: string;
+      track: string; // no size
+      compScores: Map<string, number>;
+      rowsByWeekendDesc: Array<{ weekend: string; size: Exclude<SizeOpt, "Any"> | null }>;
+    };
+
+    const map = new Map<string, Agg>();
+
+    for (const r of filteredRows) {
+      const program = String(pick(r, programKeys, "")).trim();
+      const team = String(pick(r, teamKeys, "")).trim();
+      if (!program || !team) continue;
+
+      const meta = parseMeta(r);
+      const track = buildTrackKey(meta);
+      if (!track) continue;
+
+      // team_id + track is correct and stable in your data
+      const teamId = String(r.team_id ?? "").trim();
+      const programId = String(r.program_id ?? "").trim();
+      const groupKey = teamId
+        ? `${teamId}__${track}`
+        : `${programId || normalize(program)}__${normalize(team)}__${track}`;
+
+      const score = toNum(pick(r, eventScoreKeys, "0"));
+
+      const eventId = String(pick(r, eventIdKeys, "")).trim();
+      const weekend = String(pick(r, weekendKeys, "")).trim();
+      const eventName = String(pick(r, eventNameKeys, "")).trim();
+      const sourceUrl = String(pick(r, sourceUrlKeys, "")).trim();
+
+      // Dedup: event_id -> source_url -> event_name+weekend
+      const compKey = eventId
+        ? `event:${eventId}`
+        : sourceUrl
+          ? `url:${sourceUrl}`
+          : `name:${eventName}__wk:${weekend}`;
+
+      let agg = map.get(groupKey);
+      if (!agg) {
+        agg = { key: groupKey, program, team, track, compScores: new Map(), rowsByWeekendDesc: [] };
+        map.set(groupKey, agg);
+      }
+
+      const prev = agg.compScores.get(compKey);
+      if (prev === undefined || score > prev) agg.compScores.set(compKey, score);
+
+      agg.rowsByWeekendDesc.push({ weekend, size: meta.size });
     }
 
-    const out: RankedTeam[] = [];
-    for (const [key, v] of map.entries()) {
-      if (v.ct < minEvents) continue;
+    let out = Array.from(map.values()).map((a) => {
+      a.rowsByWeekendDesc.sort((x, y) => (y.weekend || "").localeCompare(x.weekend || ""));
 
-      out.push({
-        key,
-        division: v.division,
-        program: v.program,
-        team: v.team,
-        events: v.ct,
-        avg_event_score: v.sum / v.ct,
-        last_weekend: v.last,
-      });
+      const sizeFinal = resolveTeamSize(a.rowsByWeekendDesc); // may be null
+      const scores = Array.from(a.compScores.values());
+      const comps = scores.length;
+      const avg = comps ? scores.reduce((x, y) => x + y, 0) / comps : 0;
+
+      // If never any size ever, bucket is just the division track (no UNKNOWN token)
+      const bucket = sizeFinal ? `${a.track} ${sizeFinal}` : a.track;
+
+      return {
+        key: a.key,
+        program: a.program,
+        team: a.team,
+        track: a.track,
+        size_final: sizeFinal, // null if never any size ever
+        bucket,
+        avg,
+        comps,
+      };
+    });
+
+    if (filters.requireTwoPlus) out = out.filter((x) => x.comps >= 2);
+
+    // Team-level size filter (null never matches)
+    if (filters.size !== "Any") {
+      out = out.filter((x) => x.size_final && normalize(x.size_final) === normalize(filters.size));
     }
 
-    out.sort((a, b) => cmpDesc(a.avg_event_score, b.avg_event_score));
+    out.sort((x, y) => y.avg - x.avg);
     return out;
-  }, [rawRows]);
+  }, [filteredRows, filters.requireTwoPlus, filters.size]);
 
-  const top10 = useMemo(() => {
-    return ranked.slice(0, 10).map((r) => ({
-      label: `${r.team}`,
-      value: r.avg_event_score,
-    }));
-  }, [ranked]);
+  const chartTop10 = useMemo(
+    () =>
+      teamRankings.slice(0, 10).map((t) => ({
+        key: t.key,
+        label: t.team,
+        legendLabel: `${t.program} — ${t.team}`,
+        value: t.avg,
+      })),
+    [teamRankings]
+  );
+
+  const tableTop20 = useMemo(() => teamRankings.slice(0, 20), [teamRankings]);
+
+  const ageOptions: AgeOpt[] = ["All", "Tiny", "Mini", "Youth", "Junior", "Senior", "U16", "U18", "Open"];
+
+  const emptyHint =
+    filters.requireTwoPlus
+      ? "No teams match. Default excludes teams with only 1 competition — toggle '2+ comps' off to include them."
+      : "No teams match your current filters.";
 
   return (
-    <div style={{ display: "grid", gap: 14 }}>
-      <div>
-        <h1 style={{ fontSize: 34, fontWeight: 900, lineHeight: 1.1, margin: 0 }}>
-          Rankings
-        </h1>
-        <div style={{ color: "rgba(255,255,255,0.75)", marginTop: 6 }}>
-          No filters (MVP): Top teams by average Event Score (min {minEvents} events).
+    <main style={{ padding: 20, maxWidth: 1200, margin: "0 auto", color: "white" }}>
+      {/* Header */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10 }}>
+        <h1 style={{ margin: 0, fontSize: 28, fontWeight: 900 }}>Rankings</h1>
+        <div style={{ fontSize: 12, opacity: 0.75 }}>
+          {loading ? "Loading season data…" : `${rows.length.toLocaleString()} season rows (since ${SEASON_START})`}
         </div>
       </div>
 
-      {errorMsg ? (
+      {/* Error */}
+      {error && (
         <div
           style={{
-            border: "1px solid rgba(255,255,255,0.15)",
-            background: "rgba(255,0,0,0.08)",
-            borderRadius: 12,
             padding: 12,
+            borderRadius: 10,
+            background: "rgba(255,0,0,0.12)",
+            border: "1px solid rgba(255,0,0,0.25)",
+            marginBottom: 12,
           }}
         >
-          <div style={{ fontWeight: 750, marginBottom: 6 }}>Error</div>
-          <div style={{ opacity: 0.9 }}>{errorMsg}</div>
+          <div style={{ fontWeight: 800, marginBottom: 6 }}>Error</div>
+          <pre style={{ margin: 0, whiteSpace: "pre-wrap" }}>{JSON.stringify(error, null, 2)}</pre>
         </div>
-      ) : null}
+      )}
 
-      {loading ? (
-        <div style={{ opacity: 0.85 }}>Loading rankings…</div>
-      ) : ranked.length === 0 ? (
-        <div style={{ opacity: 0.85 }}>
-          No teams found (min events = {minEvents}). If you expect results, try temporarily setting minEvents to 1 in code.
+      {/* Filters */}
+      <div style={{ maxWidth: 1100, margin: "0 auto 16px" }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 120px 140px 120px 120px 150px auto",
+            gap: 10,
+            alignItems: "end",
+          }}
+        >
+          <label style={{ display: "grid", gap: 6 }}>
+            <span style={controlLabel}>Search</span>
+            <input
+              value={filters.search}
+              onChange={(e) => setFilter("search", e.target.value)}
+              placeholder="Team / program / division / event…"
+              style={{ ...controlBase, width: "100%", outline: "none" }}
+            />
+          </label>
+
+          <label style={{ display: "grid", gap: 6 }}>
+            <span style={controlLabel}>Level</span>
+            <select
+              value={filters.level}
+              onChange={(e) => setFilter("level", e.target.value as any)}
+              style={{ ...controlBase, width: "100%", paddingRight: 28 }}
+            >
+              <option value="All">All</option>
+              {[1, 2, 3, 4, 5, 6, 7].map((n) => (
+                <option key={n} value={`L${n}`}>{`L${n}`}</option>
+              ))}
+            </select>
+          </label>
+
+          <label style={{ display: "grid", gap: 6 }}>
+            <span style={controlLabel}>Age</span>
+            <select
+              value={filters.age}
+              onChange={(e) => setFilter("age", e.target.value as any)}
+              style={{ ...controlBase, width: "100%", paddingRight: 28 }}
+            >
+              {ageOptions.map((a) => (
+                <option key={a} value={a}>
+                  {a === "All" ? "All" : a}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label style={{ display: "grid", gap: 6 }}>
+            <span style={controlLabel}>Flex</span>
+            <select
+              value={filters.flexMode}
+              onChange={(e) => setFilter("flexMode", e.target.value as any)}
+              style={{ ...controlBase, width: "100%", paddingRight: 28 }}
+            >
+              <option value="Any">Any</option>
+              <option value="FlexOnly">Flex</option>
+              <option value="NonFlexOnly">Non</option>
+            </select>
+          </label>
+
+          <label style={{ display: "grid", gap: 6 }}>
+            <span style={controlLabel}>D2</span>
+            <select
+              value={filters.d2Mode}
+              onChange={(e) => setFilter("d2Mode", e.target.value as any)}
+              style={{ ...controlBase, width: "100%", paddingRight: 28 }}
+            >
+              <option value="Any">Any</option>
+              <option value="D2Only">D2</option>
+              <option value="NonD2Only">Non</option>
+            </select>
+          </label>
+
+          <label style={{ display: "grid", gap: 6 }}>
+            <span style={controlLabel}>Size</span>
+            <select
+              value={filters.size}
+              onChange={(e) => setFilter("size", e.target.value as any)}
+              style={{ ...controlBase, width: "100%", paddingRight: 28 }}
+            >
+              <option value="Any">Any</option>
+              <option value="X-Small">XS</option>
+              <option value="Small">S</option>
+              <option value="Medium">M</option>
+              <option value="Large">L</option>
+              <option value="X-Large">XL</option>
+            </select>
+          </label>
+
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", alignItems: "center" }}>
+            {/* Toggle: 2+ comps */}
+            <div style={{ display: "grid", gap: 6 }}>
+              <span style={controlLabel}>2+ comps</span>
+              <button
+                type="button"
+                onClick={() => setFilter("requireTwoPlus", !filters.requireTwoPlus)}
+                aria-pressed={filters.requireTwoPlus}
+                style={{
+                  height: 42,
+                  width: 86,
+                  borderRadius: 999,
+                  border: "1px solid rgba(255,255,255,0.18)",
+                  background: filters.requireTwoPlus ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.06)",
+                  cursor: "pointer",
+                  position: "relative",
+                }}
+                title={filters.requireTwoPlus ? "Excluding 1-comp teams" : "Including 1-comp teams"}
+              >
+                <span
+                  style={{
+                    position: "absolute",
+                    top: 4,
+                    left: filters.requireTwoPlus ? 44 : 4,
+                    width: 34,
+                    height: 34,
+                    borderRadius: 999,
+                    background: "rgba(255,255,255,0.90)",
+                    transition: "left 160ms ease",
+                  }}
+                />
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={clearFilters}
+              style={{
+                height: 42,
+                padding: "10px 12px",
+                borderRadius: 10,
+                background: "rgba(255,255,255,0.08)",
+                border: "1px solid rgba(255,255,255,0.14)",
+                color: "white",
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              Clear
+            </button>
+          </div>
         </div>
-      ) : (
-        <>
-          <BarChart data={top10} />
+      </div>
 
+      {/* Chart */}
+      <div style={{ maxWidth: 1100, margin: "0 auto 14px" }}>
+        <BarRankingsChart items={chartTop10} />
+      </div>
+
+      {/* Table */}
+      <div style={{ maxWidth: 1100, margin: "0 auto" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+          <div style={{ fontWeight: 900, fontSize: 18 }}>Top 20</div>
+          <div style={{ fontSize: 12, opacity: 0.7 }}>Season avg event score</div>
+        </div>
+
+        {!loading && tableTop20.length === 0 ? (
           <div
             style={{
-              border: "1px solid rgba(255,255,255,0.10)",
-              borderRadius: 12,
               padding: 12,
-              background: "rgba(255,255,255,0.03)",
+              borderRadius: 10,
+              background: "rgba(255,255,255,0.05)",
+              border: "1px solid rgba(255,255,255,0.10)",
+              opacity: 0.85,
             }}
           >
-            <div style={{ fontWeight: 750, marginBottom: 10 }}>
-              Top 50
-            </div>
-
-            <div style={{ overflowX: "auto" }}>
-              <table
-                cellPadding={10}
-                style={{
-                  width: "100%",
-                  borderCollapse: "collapse",
-                  tableLayout: "fixed",
-                }}
-              >
-                <thead>
-                  <tr style={{ textAlign: "left", borderBottom: "1px solid rgba(255,255,255,0.15)" }}>
-                    <th style={{ width: "8%", whiteSpace: "nowrap" }}>Rank</th>
-                    <th style={{ width: "18%" }}>Division</th>
-                    <th style={{ width: "18%" }}>Program</th>
-                    <th style={{ width: "26%" }}>Team</th>
-                    <th style={{ width: "10%", textAlign: "right", whiteSpace: "nowrap" }}>Events</th>
-                    <th style={{ width: "20%", textAlign: "right", whiteSpace: "nowrap" }}>Avg Event</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {ranked.slice(0, 50).map((r, idx) => (
-                    <tr key={r.key} style={{ borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
-                      <td style={{ whiteSpace: "nowrap" }}>{idx + 1}</td>
-                      <td style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={r.division}>
-                        {r.division}
-                      </td>
-                      <td style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={r.program}>
-                        {r.program}
-                      </td>
-                      <td style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", fontWeight: 650 }} title={r.team}>
-                        {r.team}
-                      </td>
-                      <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>{r.events}</td>
-                      <td style={{ textAlign: "right", whiteSpace: "nowrap", fontWeight: 800 }}>
-                        {fmt3(r.avg_event_score)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <div style={{ marginTop: 10, color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
-              Source: v_results_normalized (latest 50k rows), grouped by division+program+team.
-            </div>
+            {emptyHint}
           </div>
-        </>
-      )}
-    </div>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 860 }}>
+              <thead>
+                <tr style={{ textAlign: "left", opacity: 0.85, borderBottom: "1px solid rgba(255,255,255,0.12)" }}>
+                  <th style={{ padding: "10px 8px" }}>#</th>
+                  <th style={{ padding: "10px 8px" }}>Team</th>
+                  <th style={{ padding: "10px 8px" }}>Program</th>
+                  <th style={{ padding: "10px 8px" }}>Division</th>
+                  <th style={{ padding: "10px 8px", textAlign: "right" }}>Avg</th>
+                  <th style={{ padding: "10px 8px", textAlign: "right" }}>Comps</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tableTop20.map((t, idx) => (
+                  <tr key={t.key} style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+                    <td style={{ padding: "10px 8px" }}>{idx + 1}</td>
+                    <td style={{ padding: "10px 8px", whiteSpace: "nowrap" }}>{t.team}</td>
+                    <td style={{ padding: "10px 8px", whiteSpace: "nowrap" }}>{t.program}</td>
+                    <td style={{ padding: "10px 8px", whiteSpace: "nowrap", opacity: 0.9 }}>{t.bucket}</td>
+                    <td style={{ padding: "10px 8px", textAlign: "right", whiteSpace: "nowrap" }}>{t.avg.toFixed(3)}</td>
+                    <td style={{ padding: "10px 8px", textAlign: "right", whiteSpace: "nowrap", opacity: 0.85 }}>{t.comps}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <div style={{ marginTop: 8, fontSize: 12, opacity: 0.6 }}>
+          Avg is across unique competitions (event_id preferred; else source_url; else event_name + weekend_date). Team Size is
+          latest non-null size; if none recently, last known size; if never any size, division remains without size.
+        </div>
+      </div>
+    </main>
   );
 }
