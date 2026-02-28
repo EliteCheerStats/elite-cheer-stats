@@ -144,13 +144,13 @@ function buildTrackKey(meta: { level: string | null; age: string | null; isFlex:
 }
 
 /**
- * Latest non-null size wins; if none recently, last known size ever; if never any size => null.
+ * Latest non-null size wins; else last known size ever; else null (no UNKNOWN bucket).
  */
 function resolveTeamSize(rowsDescByDate: Array<{ weekend: string; size: Exclude<SizeOpt, "Any"> | null }>) {
   const latestNonNull = rowsDescByDate.find((x) => !!x.size)?.size ?? null;
   if (latestNonNull) return latestNonNull;
   const anyKnown = rowsDescByDate.find((x) => !!x.size)?.size ?? null;
-  return anyKnown; // null if never any size
+  return anyKnown;
 }
 
 export default function RankingsPage() {
@@ -171,16 +171,8 @@ export default function RankingsPage() {
   const setFilter = <K extends keyof Filters>(key: K, value: Filters[K]) => {
     setFilters((f) => ({ ...f, [key]: value }));
   };
-  const clearFilters = () => setFilters(DEFAULT_FILTERS);
 
-  const controlLabel: React.CSSProperties = { fontSize: 12, opacity: 0.75 };
-  const controlBase: React.CSSProperties = {
-    padding: "10px 12px",
-    borderRadius: 10,
-    background: "rgba(255,255,255,0.06)",
-    border: "1px solid rgba(255,255,255,0.12)",
-    color: "white",
-  };
+  const clearFilters = () => setFilters(DEFAULT_FILTERS);
 
   useEffect(() => {
     let cancelled = false;
@@ -195,12 +187,12 @@ export default function RankingsPage() {
         .gte("weekend_date", SEASON_START)
         .order("weekend_date", { ascending: false });
 
-      // Server-side level filter
+      // server-side level filter
       if (filters.level !== "All") {
         q = q.ilike("division", `${filters.level}%`);
       }
 
-      // Server-side search (optional)
+      // server-side search (optional)
       const s = filters.search.trim();
       if (s.length >= 2) {
         const esc = s.replace(/,/g, "");
@@ -223,13 +215,12 @@ export default function RankingsPage() {
     }
 
     loadRows();
-
     return () => {
       cancelled = true;
     };
   }, [filters.level, filters.search]);
 
-  // Row-level filters only (NOT size)
+  // row-level filters only (NOT size)
   const filteredRows = useMemo(() => {
     const q = filters.search.trim().toLowerCase();
     const ageNorm = normalize(filters.age);
@@ -237,6 +228,7 @@ export default function RankingsPage() {
     return rows.filter((r) => {
       const meta = parseMeta(r);
 
+      // age
       if (filters.age !== "All") {
         const rowAge = String(r.age_bucket ?? "");
         if (rowAge) {
@@ -246,13 +238,14 @@ export default function RankingsPage() {
         }
       }
 
+      // d2/flex
       if (filters.d2Mode === "D2Only" && !meta.isD2) return false;
       if (filters.d2Mode === "NonD2Only" && meta.isD2) return false;
 
       if (filters.flexMode === "FlexOnly" && !meta.isFlex) return false;
       if (filters.flexMode === "NonFlexOnly" && meta.isFlex) return false;
 
-      // Search fallback for short queries
+      // local search fallback
       if (q) {
         const eventName = String(pick(r, eventNameKeys, "")).toLowerCase();
         const program = String(pick(r, programKeys, "")).toLowerCase();
@@ -265,13 +258,17 @@ export default function RankingsPage() {
     });
   }, [rows, filters.age, filters.d2Mode, filters.flexMode, filters.search]);
 
-  // Aggregate teams, compute avg across ALL comps, determine final size, then apply size filter at team-level
+  // Aggregate teams:
+  // - dedupe to 1 score per team per comp
+  // - avg across season
+  // - compute "final size"
+  // - apply size filter at team-level
   const teamRankings = useMemo(() => {
     type Agg = {
       key: string;
       program: string;
       team: string;
-      track: string; // no size
+      track: string; // level+age+flex+d2 (no size)
       compScores: Map<string, number>;
       rowsByWeekendDesc: Array<{ weekend: string; size: Exclude<SizeOpt, "Any"> | null }>;
     };
@@ -287,10 +284,12 @@ export default function RankingsPage() {
       const track = buildTrackKey(meta);
       if (!track) continue;
 
-      // Prefer team_id (your data is stable), fallback to program_id+name
       const teamId = String(r.team_id ?? "").trim();
       const programId = String(r.program_id ?? "").trim();
-      const groupKey = teamId ? `${teamId}__${track}` : `${programId || normalize(program)}__${normalize(team)}__${track}`;
+
+      const groupKey = teamId
+        ? `${teamId}__${track}`
+        : `${programId || normalize(program)}__${normalize(team)}__${track}`;
 
       const score = toNum(pick(r, eventScoreKeys, 0));
 
@@ -299,7 +298,6 @@ export default function RankingsPage() {
       const eventName = String(pick(r, eventNameKeys, "")).trim();
       const sourceUrl = String(pick(r, sourceUrlKeys, "")).trim();
 
-      // Dedup: event_id -> source_url -> event_name+weekend
       const compKey = eventId ? `event:${eventId}` : sourceUrl ? `url:${sourceUrl}` : `name:${eventName}__wk:${weekend}`;
 
       let agg = map.get(groupKey);
@@ -308,6 +306,7 @@ export default function RankingsPage() {
         map.set(groupKey, agg);
       }
 
+      // dedupe: keep best score per competition key
       const prev = agg.compScores.get(compKey);
       if (prev === undefined || score > prev) agg.compScores.set(compKey, score);
 
@@ -316,30 +315,30 @@ export default function RankingsPage() {
 
     let out = Array.from(map.values()).map((a) => {
       a.rowsByWeekendDesc.sort((x, y) => (y.weekend || "").localeCompare(x.weekend || ""));
-
       const sizeFinal = resolveTeamSize(a.rowsByWeekendDesc); // may be null
+
       const scores = Array.from(a.compScores.values());
       const comps = scores.length;
       const avg = comps ? scores.reduce((x, y) => x + y, 0) / comps : 0;
 
-      // If never any size ever, bucket is just the division track (no UNKNOWN token)
+      // if never size -> just track (no UNKNOWN)
       const bucket = sizeFinal ? `${a.track} ${sizeFinal}` : a.track;
 
       return {
         key: a.key,
         program: a.program,
         team: a.team,
-        track: a.track,
-        size_final: sizeFinal, // null if never any size ever
         bucket,
+        size_final: sizeFinal,
         avg,
         comps,
       };
     });
 
+    // default: only 2+ comps
     if (filters.requireTwoPlus) out = out.filter((x) => x.comps >= 2);
 
-    // Team-level size filter (null never matches)
+    // size filter at team-level
     if (filters.size !== "Any") {
       out = out.filter((x) => x.size_final && normalize(x.size_final) === normalize(filters.size));
     }
@@ -368,57 +367,38 @@ export default function RankingsPage() {
     : "No teams match your current filters.";
 
   return (
-    <main style={{ padding: 20, maxWidth: 1200, margin: "0 auto", color: "white" }}>
+    <main className="space-y-6">
       {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10 }}>
-        <h1 style={{ margin: 0, fontSize: 28, fontWeight: 900 }}>Rankings</h1>
-        <div style={{ fontSize: 12, opacity: 0.75 }}>
-          {loading ? "Loading season data…" : `${rows.length.toLocaleString()} season rows (since ${SEASON_START})`}
+      <div className="flex items-end justify-between gap-4">
+        <div>
+          <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight text-slate-100">Rankings</h1>
+          <p className="mt-2 text-slate-300">
+            Season average event score per team (since{" "}
+            <span className="font-semibold text-slate-200">{SEASON_START}</span>).
+          </p>
         </div>
+        <div className="text-xs text-slate-400">{loading ? "Loading…" : `${rows.length.toLocaleString()} rows loaded`}</div>
       </div>
 
-      {/* Error */}
-      {error && (
-        <div
-          style={{
-            padding: 12,
-            borderRadius: 10,
-            background: "rgba(255,0,0,0.12)",
-            border: "1px solid rgba(255,0,0,0.25)",
-            marginBottom: 12,
-          }}
-        >
-          <div style={{ fontWeight: 800, marginBottom: 6 }}>Error</div>
-          <pre style={{ margin: 0, whiteSpace: "pre-wrap" }}>{JSON.stringify(error, null, 2)}</pre>
-        </div>
-      )}
-
       {/* Filters */}
-      <div style={{ maxWidth: 1100, margin: "0 auto 16px" }}>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 120px 140px 120px 120px 150px auto",
-            gap: 10,
-            alignItems: "end",
-          }}
-        >
-          <label style={{ display: "grid", gap: 6 }}>
-            <span style={controlLabel}>Search</span>
+      <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/10 to-white/5 p-5">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-7 md:items-end">
+          <label className="grid gap-1 md:col-span-2">
+            <span className="text-xs text-slate-300">Search</span>
             <input
               value={filters.search}
               onChange={(e) => setFilter("search", e.target.value)}
               placeholder="Team / program / division / event…"
-              style={{ ...controlBase, width: "100%", outline: "none" }}
+              className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-slate-100 outline-none placeholder:text-slate-500"
             />
           </label>
 
-          <label style={{ display: "grid", gap: 6 }}>
-            <span style={controlLabel}>Level</span>
+          <label className="grid gap-1">
+            <span className="text-xs text-slate-300">Level</span>
             <select
               value={filters.level}
               onChange={(e) => setFilter("level", e.target.value as any)}
-              style={{ ...controlBase, width: "100%", paddingRight: 28 }}
+              className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-slate-100 outline-none"
             >
               <option value="All">All</option>
               {[1, 2, 3, 4, 5, 6, 7].map((n) => (
@@ -427,12 +407,12 @@ export default function RankingsPage() {
             </select>
           </label>
 
-          <label style={{ display: "grid", gap: 6 }}>
-            <span style={controlLabel}>Age</span>
+          <label className="grid gap-1">
+            <span className="text-xs text-slate-300">Age</span>
             <select
               value={filters.age}
               onChange={(e) => setFilter("age", e.target.value as any)}
-              style={{ ...controlBase, width: "100%", paddingRight: 28 }}
+              className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-slate-100 outline-none"
             >
               {ageOptions.map((a) => (
                 <option key={a} value={a}>
@@ -442,25 +422,12 @@ export default function RankingsPage() {
             </select>
           </label>
 
-          <label style={{ display: "grid", gap: 6 }}>
-            <span style={controlLabel}>Flex</span>
-            <select
-              value={filters.flexMode}
-              onChange={(e) => setFilter("flexMode", e.target.value as any)}
-              style={{ ...controlBase, width: "100%", paddingRight: 28 }}
-            >
-              <option value="Any">Any</option>
-              <option value="FlexOnly">Flex</option>
-              <option value="NonFlexOnly">Non</option>
-            </select>
-          </label>
-
-          <label style={{ display: "grid", gap: 6 }}>
-            <span style={controlLabel}>D2</span>
+          <label className="grid gap-1">
+            <span className="text-xs text-slate-300">D2</span>
             <select
               value={filters.d2Mode}
               onChange={(e) => setFilter("d2Mode", e.target.value as any)}
-              style={{ ...controlBase, width: "100%", paddingRight: 28 }}
+              className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-slate-100 outline-none"
             >
               <option value="Any">Any</option>
               <option value="D2Only">D2</option>
@@ -468,52 +435,36 @@ export default function RankingsPage() {
             </select>
           </label>
 
-          <label style={{ display: "grid", gap: 6 }}>
-            <span style={controlLabel}>Size</span>
+          <label className="grid gap-1">
+            <span className="text-xs text-slate-300">Flex</span>
             <select
-              value={filters.size}
-              onChange={(e) => setFilter("size", e.target.value as any)}
-              style={{ ...controlBase, width: "100%", paddingRight: 28 }}
+              value={filters.flexMode}
+              onChange={(e) => setFilter("flexMode", e.target.value as any)}
+              className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-slate-100 outline-none"
             >
               <option value="Any">Any</option>
-              <option value="X-Small">XS</option>
-              <option value="Small">S</option>
-              <option value="Medium">M</option>
-              <option value="Large">L</option>
-              <option value="X-Large">XL</option>
+              <option value="FlexOnly">Flex</option>
+              <option value="NonFlexOnly">Non</option>
             </select>
           </label>
 
-          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", alignItems: "center" }}>
-            {/* Toggle: 2+ comps */}
-            <div style={{ display: "grid", gap: 6 }}>
-              <span style={controlLabel}>2+ comps</span>
+          <div className="flex items-center justify-between gap-3 md:justify-end">
+            {/* Toggle */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-300">2+ comps</span>
               <button
                 type="button"
                 onClick={() => setFilter("requireTwoPlus", !filters.requireTwoPlus)}
                 aria-pressed={filters.requireTwoPlus}
-                style={{
-                  height: 42,
-                  width: 86,
-                  borderRadius: 999,
-                  border: "1px solid rgba(255,255,255,0.18)",
-                  background: filters.requireTwoPlus ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.06)",
-                  cursor: "pointer",
-                  position: "relative",
-                }}
+                className={`relative h-10 w-20 rounded-full border border-white/15 ${
+                  filters.requireTwoPlus ? "bg-white/15" : "bg-white/5"
+                }`}
                 title={filters.requireTwoPlus ? "Excluding 1-comp teams" : "Including 1-comp teams"}
               >
                 <span
-                  style={{
-                    position: "absolute",
-                    top: 4,
-                    left: filters.requireTwoPlus ? 44 : 4,
-                    width: 34,
-                    height: 34,
-                    borderRadius: 999,
-                    background: "rgba(255,255,255,0.90)",
-                    transition: "left 160ms ease",
-                  }}
+                  className={`absolute top-1 h-8 w-8 rounded-full bg-white/90 transition-all ${
+                    filters.requireTwoPlus ? "left-11" : "left-1"
+                  }`}
                 />
               </button>
             </div>
@@ -521,87 +472,108 @@ export default function RankingsPage() {
             <button
               type="button"
               onClick={clearFilters}
-              style={{
-                height: 42,
-                padding: "10px 12px",
-                borderRadius: 10,
-                background: "rgba(255,255,255,0.08)",
-                border: "1px solid rgba(255,255,255,0.14)",
-                color: "white",
-                cursor: "pointer",
-                whiteSpace: "nowrap",
-              }}
+              className="h-10 rounded-xl border border-white/10 bg-white/5 px-4 text-sm font-semibold text-slate-100 hover:bg-white/10"
             >
               Clear
             </button>
           </div>
         </div>
+
+        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <label className="grid gap-1">
+            <span className="text-xs text-slate-300">Size</span>
+            <select
+              value={filters.size}
+              onChange={(e) => setFilter("size", e.target.value as any)}
+              className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-slate-100 outline-none"
+            >
+              <option value="Any">Any</option>
+              <option value="X-Small">XS</option>
+              <option value="Small">Small</option>
+              <option value="Medium">Medium</option>
+              <option value="Large">Large</option>
+              <option value="X-Large">XL</option>
+            </select>
+          </label>
+        </div>
       </div>
 
-      {/* Chart (mobile: same behavior as Team Search: no shrinking, horizontal scroll) */}
-      <div style={{ maxWidth: 1100, margin: "0 auto 14px" }}>
-        <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
-          {/* minWidth keeps it readable on mobile; swipe to see full chart */}
-          <div style={{ minWidth: 900 }}>
+      {/* Error */}
+      {error && (
+        <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4">
+          <div className="font-semibold text-red-200">Error</div>
+          <pre className="mt-2 overflow-x-auto text-xs text-red-100">{JSON.stringify(error, null, 2)}</pre>
+        </div>
+      )}
+
+      {/* ✅ Minimal-effort mobile width fix: min-width + horizontal scroll inside the card */}
+      <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+        <div className="flex items-end justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-bold text-slate-100">Top 10 — Average Event Score</h2>
+            <p className="text-sm text-slate-400">Season average event score per team.</p>
+          </div>
+          <div className="text-xs text-slate-400">
+            Teams: <span className="font-semibold text-slate-200">{chartTop10.length}</span>
+          </div>
+        </div>
+
+        <div className="-mx-5 mt-4 overflow-x-auto px-5">
+          <div className="min-w-[860px]">
             <BarRankingsChart items={chartTop10} />
           </div>
         </div>
+
+        {!loading && chartTop10.length === 0 && (
+          <div className="mt-3 text-sm text-slate-400">{emptyHint}</div>
+        )}
       </div>
 
       {/* Table */}
-      <div style={{ maxWidth: 1100, margin: "0 auto" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-          <div style={{ fontWeight: 900, fontSize: 18 }}>Top 20</div>
-          <div style={{ fontSize: 12, opacity: 0.7 }}>Season avg event score</div>
+      <div className="rounded-2xl border border-white/10 bg-white/5">
+        <div className="flex items-center justify-between px-4 py-3">
+          <div>
+            <div className="text-sm font-semibold text-slate-100">Top 20</div>
+            <div className="text-xs text-slate-400">Season avg event score</div>
+          </div>
         </div>
 
-        {!loading && tableTop20.length === 0 ? (
-          <div
-            style={{
-              padding: 12,
-              borderRadius: 10,
-              background: "rgba(255,255,255,0.05)",
-              border: "1px solid rgba(255,255,255,0.10)",
-              opacity: 0.85,
-            }}
-          >
-            {emptyHint}
-          </div>
+        {!loading && !error && tableTop20.length === 0 ? (
+          <div className="p-6 text-slate-200">{emptyHint}</div>
         ) : (
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 860 }}>
-              <thead>
-                <tr style={{ textAlign: "left", opacity: 0.85, borderBottom: "1px solid rgba(255,255,255,0.12)" }}>
-                  <th style={{ padding: "10px 8px" }}>#</th>
-                  <th style={{ padding: "10px 8px" }}>Team</th>
-                  <th style={{ padding: "10px 8px" }}>Program</th>
-                  <th style={{ padding: "10px 8px" }}>Division</th>
-                  <th style={{ padding: "10px 8px", textAlign: "right" }}>Avg</th>
-                  <th style={{ padding: "10px 8px", textAlign: "right" }}>Comps</th>
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="bg-white/5 text-slate-200">
+                <tr className="text-left">
+                  <th className="px-3 py-3">#</th>
+                  <th className="px-3 py-3">Team</th>
+                  <th className="px-3 py-3">Program</th>
+                  <th className="px-3 py-3">Division Bucket</th>
+                  <th className="px-3 py-3 text-right">Avg</th>
+                  <th className="px-3 py-3 text-right">Comps</th>
                 </tr>
               </thead>
-              <tbody>
+
+              <tbody className="divide-y divide-white/10">
                 {tableTop20.map((t, idx) => (
-                  <tr key={t.key} style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-                    <td style={{ padding: "10px 8px" }}>{idx + 1}</td>
-                    <td style={{ padding: "10px 8px", whiteSpace: "nowrap" }}>{t.team}</td>
-                    <td style={{ padding: "10px 8px", whiteSpace: "nowrap" }}>{t.program}</td>
-                    <td style={{ padding: "10px 8px", whiteSpace: "nowrap", opacity: 0.9 }}>{t.bucket}</td>
-                    <td style={{ padding: "10px 8px", textAlign: "right", whiteSpace: "nowrap" }}>{t.avg.toFixed(3)}</td>
-                    <td style={{ padding: "10px 8px", textAlign: "right", whiteSpace: "nowrap", opacity: 0.85 }}>
-                      {t.comps}
-                    </td>
+                  <tr key={t.key} className="text-slate-100 hover:bg-white/5">
+                    <td className="px-3 py-3 text-slate-300">{idx + 1}</td>
+                    <td className="px-3 py-3 font-semibold">{t.team}</td>
+                    <td className="px-3 py-3 text-slate-200">{t.program}</td>
+                    <td className="px-3 py-3 text-slate-200">{t.bucket}</td>
+                    <td className="px-3 py-3 text-right font-semibold">{t.avg.toFixed(3)}</td>
+                    <td className="px-3 py-3 text-right text-slate-200">{t.comps}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         )}
+      </div>
 
-        <div style={{ marginTop: 8, fontSize: 12, opacity: 0.6 }}>
-          Avg is across unique competitions (event_id preferred; else source_url; else event_name + weekend_date). Team Size is
-          latest non-null size; if none recently, last known size; if never any size, division remains without size.
-        </div>
+      <div className="text-xs text-slate-500">
+        Avg is across unique competitions (event_id preferred; else source_url; else event_name + weekend_date). Team Size is latest
+        non-null size; if none recently, last known size; if never any size, division remains without size.
       </div>
     </main>
   );
