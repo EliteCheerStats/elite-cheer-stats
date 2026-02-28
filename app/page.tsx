@@ -14,12 +14,6 @@ export default function Home() {
         </p>
 
         <div className="grid md:grid-cols-2 gap-6">
-          <Link href="/explorer" className="p-6 bg-slate-800 rounded-xl hover:bg-slate-700 transition">
-            <h2 className="text-2xl font-semibold">Results Explorer</h2>
-            <p className="text-slate-400 mt-2">
-              Filter across levels, divisions, weekends and more.
-            </p>
-          </Link>
 
           <Link href="/rankings" className="p-6 bg-slate-800 rounded-xl hover:bg-slate-700 transition">
             <h2 className="text-2xl font-semibold">Division Rankings</h2>

@@ -33,7 +33,7 @@ export default function RootLayout({
           </a>
 
           <nav className="flex flex-wrap items-center gap-2 sm:gap-4 text-sm text-slate-200">
-            <a className="hover:text-white" href="/explorer">Explorer</a>
+            
             <a className="hover:text-white" href="/rankings">Rankings</a>
             <a className="hover:text-white" href="/team">Team Search</a>
             <a
