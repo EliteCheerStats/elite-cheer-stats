@@ -114,7 +114,7 @@ export default function TeamSearchPage() {
         Team Search
       </h1>
       <p style={{ marginTop: 0, opacity: 0.75 }}>
-        Search teams by name. You’ll pick the exact <b>Team — Program</b> so duplicate names never collide.
+        <b>Where does your team Rank Nationally?</b>
       </p>
 
       <div style={{ display: "grid", gap: 8, maxWidth: 720, marginTop: 14 }}>
