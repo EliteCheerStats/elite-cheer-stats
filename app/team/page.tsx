@@ -31,15 +31,14 @@ export default function TeamSearchPage() {
 
       if (q.length < 2) {
         setHits([]);
+        setLoading(false);
         return;
       }
 
       setLoading(true);
 
-      // Pull a reasonable number of rows, then dedupe client-side by team_id.
-      // (Supabase JS doesn't support group by nicely in the client.)
       const { data, error } = await supabase
-        .from("v_results_normalized")
+        .from("v_team_event_scores")
         .select("team_id, program_id, team, program, weekend_date")
         .ilike("team", `%${q}%`)
         .limit(5000);
@@ -56,13 +55,16 @@ export default function TeamSearchPage() {
       const map = new Map<string, TeamHit>();
 
       for (const r of data ?? []) {
-        const teamId = r.team_id as string;
-        const team = (r.team ?? "") as string;
-        const program = (r.program ?? "") as string;
+        const teamId = String(r.team_id ?? "");
+        if (!teamId) continue;
+
+        const team = String(r.team ?? "");
+        const program = String(r.program ?? "");
         const programId = (r.program_id ?? null) as string | null;
         const wd = (r.weekend_date ?? null) as string | null;
 
         const existing = map.get(teamId);
+
         if (!existing) {
           map.set(teamId, {
             team_id: teamId,
@@ -76,14 +78,18 @@ export default function TeamSearchPage() {
           });
         } else {
           existing.rows = (existing.rows ?? 0) + 1;
+
           if (wd) {
-            if (!existing.first_week || wd < existing.first_week) existing.first_week = wd;
-            if (!existing.last_week || wd > existing.last_week) existing.last_week = wd;
+            if (!existing.first_week || wd < existing.first_week) {
+              existing.first_week = wd;
+            }
+            if (!existing.last_week || wd > existing.last_week) {
+              existing.last_week = wd;
+            }
           }
         }
       }
 
-      // Sort: most recent activity first, then more rows
       const list = Array.from(map.values()).sort((a, b) => {
         const ad = a.last_week ?? "";
         const bd = b.last_week ?? "";
@@ -96,6 +102,7 @@ export default function TeamSearchPage() {
     }
 
     run();
+
     return () => {
       cancelled = true;
     };
@@ -153,14 +160,23 @@ export default function TeamSearchPage() {
             }}
           >
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontWeight: 800, fontSize: 16, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              <div
+                style={{
+                  fontWeight: 800,
+                  fontSize: 16,
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
                 {h.team_display_name}
               </div>
               <div style={{ opacity: 0.75, fontSize: 13 }}>
                 Team ID: {h.team_id}
               </div>
               <div style={{ opacity: 0.75, fontSize: 13 }}>
-                Weeks: {h.first_week ?? "—"} → {h.last_week ?? "—"} • Rows scanned: {h.rows ?? 0}
+                Weeks: {h.first_week ?? "—"} → {h.last_week ?? "—"} • Rows scanned:{" "}
+                {h.rows ?? 0}
               </div>
             </div>
 

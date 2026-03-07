@@ -45,11 +45,10 @@ export default function TeamProfilePage() {
       setError(null);
 
       const { data, error } = await supabase
-        .from("v_results_normalized")
-        .select("*")
-        .eq("team_id", teamId)
-        .order("weekend_date", { ascending: false })
-        .limit(20000);
+       .from("v_team_event_scores")
+       .select("*")
+        .eq("team_id", params.team_id)
+       .order("weekend_date", { ascending: true });
 
       if (cancelled) return;
 

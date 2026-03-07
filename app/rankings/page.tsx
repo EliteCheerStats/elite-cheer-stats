@@ -165,7 +165,7 @@ export default function RankingsPage() {
   const eventScoreKeys = ["event_score", "event_total", "total_score", "score"];
   const eventNameKeys = ["event_name", "event", "event_title", "competition_name", "competition", "event_display_name"];
   const eventIdKeys = ["event_id", "eventId", "competition_id"];
-  const weekendKeys = ["weekend_date", "weekend"];
+  const weekendKeys = ["event_start_date", "weekend"];
   const sourceUrlKeys = ["source_url", "sourceUrl", "url"];
 
   const setFilter = <K extends keyof Filters>(key: K, value: Filters[K]) => {
@@ -182,7 +182,7 @@ export default function RankingsPage() {
       setError(null);
 
       let q = supabase
-        .from("v_results_normalized")
+        .from("v_team_event_scores")
         .select("*")
         .gte("weekend_date", SEASON_START)
         .order("weekend_date", { ascending: false });
@@ -572,7 +572,7 @@ export default function RankingsPage() {
       </div>
 
       <div className="text-xs text-slate-500">
-        Avg is across unique competitions (event_id preferred; else source_url; else event_name + weekend_date). Team Size is latest
+        Avg is across unique competitions (event_id preferred; else source_url; else event_name + event_start_date). Team Size is latest
         non-null size; if none recently, last known size; if never any size, division remains without size.
       </div>
     </main>
