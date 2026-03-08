@@ -23,6 +23,25 @@ function normalize(s: string) {
   return String(s ?? "").trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+async function handleShare() {
+  const url = window.location.href;
+  const title = "Elite Cheer Stats Rankings";
+  const text = "Check out these rankings on Elite Cheer Stats";
+
+  try {
+    if (navigator.share) {
+      await navigator.share({ title, text, url });
+      return;
+    }
+
+    await navigator.clipboard.writeText(url);
+    window.alert("Link copied to clipboard");
+  } catch (err) {
+    console.error("Share failed:", err);
+  }
+}
+
+
 function titleCase(s: string) {
   const t = normalize(s);
   if (!t) return "";
@@ -56,6 +75,7 @@ const DEFAULT_FILTERS: Filters = {
 };
 
 const SEASON_START = "2025-12-01";
+const lastUpdated = new Date().toLocaleDateString();
 
 // ---------- Parsing helpers ----------
 function inferLevelFromDivision(divisionRaw: string): string | null {
@@ -128,6 +148,22 @@ function parseMeta(r: Row) {
 
   return { division, level, age, isD2, isFlex, size };
 }
+
+  function isSupportedForRankings(meta: {
+    division: string;
+    level: string | null;
+    age: string | null;
+    size: string | null;
+  }) {
+    const d = normalize(meta.division);
+
+    if (meta.level === "L7") return false;
+    if (d.includes("coed")) return false;
+    if (meta.age === "U16" || meta.age === "U18" || meta.age === "Open") return false;
+    if (meta.size === "X-Large" || meta.size === null) return false;
+
+    return true;
+  }
 
 function buildTrackKey(meta: { level: string | null; age: string | null; isFlex: boolean; isD2: boolean }) {
   const parts: string[] = [];
@@ -222,6 +258,7 @@ export default function RankingsPage() {
 
     return rows.filter((r) => {
       const meta = parseMeta(r);
+      if (!isSupportedForRankings(meta)) return false;
 
       // age
       if (filters.age !== "All") {
@@ -283,8 +320,8 @@ export default function RankingsPage() {
       const programId = String(r.program_id ?? "").trim();
 
       const groupKey = teamId
-        ? `${teamId}__${track}`
-        : `${programId || normalize(program)}__${normalize(team)}__${track}`;
+        ? teamId
+        : `${programId || normalize(program)}__${normalize(team)}`;
 
       const score = toNum(pick(r, eventScoreKeys, 0));
 
@@ -357,6 +394,16 @@ export default function RankingsPage() {
 
   const ageOptions: AgeOpt[] = ["All", "Tiny", "Mini", "Youth", "Junior", "Senior"];
 
+  const rankingLabel = [
+    filters.level !== "All" ? filters.level.replace("L", "Level ") : null,
+    filters.age !== "All" ? filters.age : null,
+    filters.flexMode === "FlexOnly" ? "Flex" : null,
+    filters.d2Mode === "D2Only" ? "- D2" : null,
+    filters.size !== "Any" ? filters.size : null,
+  ]
+  .filter(Boolean)
+  .join(" ");
+
   const emptyHint = filters.requireTwoPlus
     ? "No teams match. Default excludes teams with only 1 competition — toggle '2+ comps' off to include them."
     : "No teams match your current filters.";
@@ -364,17 +411,40 @@ export default function RankingsPage() {
   return (
     <main className="space-y-6">
       {/* Header */}
-      <div className="flex items-end justify-between gap-4">
-        <div>
-          <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight text-slate-100">Rankings</h1>
-          <p className="mt-2 text-slate-300">
-            Season average event score per team (since{" "}
-            <span className="font-semibold text-slate-200">{SEASON_START}</span>).
-          </p>
-        </div>
-        <div className="text-xs text-slate-400">{loading ? "Loading…" : `${rows.length.toLocaleString()} rows loaded`}</div>
-      </div>
+<div className="flex items-end justify-between gap-4">
+  <div>
+    <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight text-slate-100">
+      Rankings
+    </h1>
+    <p className="mt-2 text-slate-300">
+      Season average event score per team (since{" "}
+      <span className="font-semibold text-slate-200">{SEASON_START}</span>).
+    </p>
 
+    <p className="mt-1 text-xs text-slate-400">
+      Scores sourced from Varsity competition results.
+    </p>
+  </div>
+
+  <div className="flex items-center gap-3">
+    <div className="text-xs text-slate-400">
+      Updated: {lastUpdated}
+    </div>
+
+    <div className="text-xs text-slate-400">
+      {loading ? "Loading…" : `${rows.length.toLocaleString()} rows loaded`}
+    </div>
+
+
+    <button
+      type="button"
+      onClick={handleShare}
+      className="h-10 rounded-xl border border-white/10 bg-white/5 px-4 text-sm font-semibold text-slate-100 hover:bg-white/10"
+    >
+      Share
+    </button>
+  </div>
+</div>
       {/* Filters */}
       <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/10 to-white/5 p-5">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-7 md:items-end">
@@ -504,7 +574,7 @@ export default function RankingsPage() {
       <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
         <div className="flex items-end justify-between gap-4">
           <div>
-            <h2 className="text-lg font-bold text-slate-100">Top 10 — Average Event Score</h2>
+            <h2 className="text-lg font-bold text-slate-100">Top 10 — {rankingLabel || "All Teams"}</h2>
             <p className="text-sm text-slate-400">Season average event score per team.</p>
           </div>
           <div className="text-xs text-slate-400">

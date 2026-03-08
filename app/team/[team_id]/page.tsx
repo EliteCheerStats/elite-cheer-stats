@@ -224,19 +224,24 @@ const trendData = useMemo(() => {
     {!loading && !error && filtered.length > 0 && (
       <div className="rounded-2xl border border-white/10 bg-white/5">
         <div className="flex items-center justify-between px-4 py-3">
-          <div>
-            <div className="text-sm font-semibold text-slate-100">Results</div>
-            <div className="text-xs text-slate-400">
-              Showing {filtered.length.toLocaleString()} rows
-            </div>
+         <div>
+          <div className="text-sm font-semibold text-slate-100">Results</div>
+
+          <div className="text-xs text-slate-400">
+            Showing {filtered.length.toLocaleString()} rows
           </div>
+
+          <div className="mt-1 text-sm font-semibold text-slate-200">
+            {filtered[0]?.team} — {filtered[0]?.program}
+          </div>
+        </div>
         </div>
 
 <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
   <div className="flex items-end justify-between gap-4">
     <div>
       <h2 className="text-lg font-bold text-slate-100">Score Trend</h2>
-      <p className="text-sm text-slate-400">Best event score per weekend (based on current filters).</p>
+      <p className="text-sm text-slate-400">Event score trend by weekend (based on current filters).</p>
     </div>
     <div className="text-xs text-slate-400">
       Points: <span className="font-semibold text-slate-200">{trendData.length}</span>

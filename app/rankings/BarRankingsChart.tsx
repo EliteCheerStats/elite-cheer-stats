@@ -20,7 +20,7 @@ function clamp(n: number, a: number, b: number) {
 
 export function BarRankingsChart({
   items,
-  title = "Top 10 — Average Event Score",
+  title,
   height = 360,
 }: {
   items: Item[];

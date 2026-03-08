@@ -22,6 +22,7 @@ export default function TeamSearchPage() {
   const [error, setError] = useState<any>(null);
 
   const q = query.trim();
+  const lastUpdated = new Date().toLocaleDateString();
 
   useEffect(() => {
     let cancelled = false;
@@ -123,6 +124,13 @@ export default function TeamSearchPage() {
       <p style={{ marginTop: 0, opacity: 0.75 }}>
         <b>Where does your team Rank Nationally?</b>
       </p>
+      <p className="mt-1 text-xs text-slate-400">
+        Scores sourced from Varsity competition results.
+      </p>
+
+      <p className="mt-1 text-xs text-slate-400">
+        Updated: {lastUpdated}
+      </p>
 
       <div style={{ display: "grid", gap: 8, maxWidth: 720, marginTop: 14 }}>
         <label style={{ display: "grid", gap: 6 }}>
@@ -172,7 +180,7 @@ export default function TeamSearchPage() {
                 {h.team_display_name}
               </div>
               <div style={{ opacity: 0.75, fontSize: 13 }}>
-                Team ID: {h.team_id}
+                Program: {h.program}
               </div>
               <div style={{ opacity: 0.75, fontSize: 13 }}>
                 Weeks: {h.first_week ?? "—"} → {h.last_week ?? "—"} • Rows scanned:{" "}
