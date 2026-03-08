@@ -88,7 +88,6 @@ function cleanSizeAny(v: any): Exclude<SizeOpt, "Any"> | null {
   if (s === "small") return "Small";
   if (s === "medium") return "Medium";
   if (s === "large") return "Large";
-  if (s === "x large" || s === "xlarge") return "X-Large";
   return null;
 }
 
