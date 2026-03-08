@@ -29,11 +29,11 @@ function titleCase(s: string) {
   return t.replace(/\b\w/g, (m) => m.toUpperCase());
 }
 
-type SizeOpt = "Any" | "X-Small" | "Small" | "Medium" | "Large" | "X-Large";
+type SizeOpt = "Any" | "X-Small" | "Small" | "Medium" | "Large";
 type D2Mode = "Any" | "D2Only" | "NonD2Only";
 type FlexMode = "Any" | "FlexOnly" | "NonFlexOnly";
-type LevelOpt = "All" | "L1" | "L2" | "L3" | "L4" | "L5" | "L6" | "L7";
-type AgeOpt = "All" | "Tiny" | "Mini" | "Youth" | "Junior" | "Senior" | "U16" | "U18" | "Open";
+type LevelOpt = "All" | "L1" | "L2" | "L3" | "L4" | "L5" | "L6";
+type AgeOpt = "All" | "Tiny" | "Mini" | "Youth" | "Junior" | "Senior";
 
 type Filters = {
   search: string;
@@ -60,22 +60,19 @@ const SEASON_START = "2025-12-01";
 // ---------- Parsing helpers ----------
 function inferLevelFromDivision(divisionRaw: string): string | null {
   const d = String(divisionRaw ?? "");
-  const m = d.match(/^\s*L\s*([1-7])\b/i) || d.match(/^\s*L([1-7])\b/i);
+  const m = d.match(/^\s*L\s*([1-6])\b/i) || d.match(/^\s*L([1-6])\b/i);
   return m ? `L${m[1]}` : null;
 }
 
 function inferAgeFromDivision(divisionRaw: string): string | null {
   const d = normalize(divisionRaw);
   const candidates: Array<[string, string]> = [
-    ["tiny", "Tiny"],
-    ["mini", "Mini"],
-    ["youth", "Youth"],
-    ["junior", "Junior"],
-    ["senior", "Senior"],
-    ["u16", "U16"],
-    ["u18", "U18"],
-    ["open", "Open"],
-  ];
+  ["tiny", "Tiny"],
+  ["mini", "Mini"],
+  ["youth", "Youth"],
+  ["junior", "Junior"],
+  ["senior", "Senior"],
+];
   for (const [k, label] of candidates) {
     if (d.includes(k)) return label;
   }
@@ -98,7 +95,6 @@ function cleanSizeAny(v: any): Exclude<SizeOpt, "Any"> | null {
 function inferSizeFromDivision(divisionRaw: string): Exclude<SizeOpt, "Any"> | null {
   const d = normalize(divisionRaw);
   if (d.includes("x-small") || d.includes("x small") || d.includes("xsmall")) return "X-Small";
-  if (d.includes("x-large") || d.includes("x large") || d.includes("xlarge")) return "X-Large";
   if (d.includes(" small")) return "Small";
   if (d.includes(" medium")) return "Medium";
   if (d.includes(" large")) return "Large";
@@ -360,7 +356,7 @@ export default function RankingsPage() {
 
   const tableTop20 = useMemo(() => teamRankings.slice(0, 20), [teamRankings]);
 
-  const ageOptions: AgeOpt[] = ["All", "Tiny", "Mini", "Youth", "Junior", "Senior", "U16", "U18", "Open"];
+  const ageOptions: AgeOpt[] = ["All", "Tiny", "Mini", "Youth", "Junior", "Senior"];
 
   const emptyHint = filters.requireTwoPlus
     ? "No teams match. Default excludes teams with only 1 competition — toggle '2+ comps' off to include them."
@@ -401,7 +397,7 @@ export default function RankingsPage() {
               className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-slate-100 outline-none"
             >
               <option value="All">All</option>
-              {[1, 2, 3, 4, 5, 6, 7].map((n) => (
+              {[1, 2, 3, 4, 5, 6].map((n) => (
                 <option key={n} value={`L${n}`}>{`L${n}`}</option>
               ))}
             </select>
@@ -492,7 +488,6 @@ export default function RankingsPage() {
               <option value="Small">Small</option>
               <option value="Medium">Medium</option>
               <option value="Large">Large</option>
-              <option value="X-Large">XL</option>
             </select>
           </label>
         </div>
