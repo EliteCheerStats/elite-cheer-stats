@@ -160,7 +160,7 @@ function parseMeta(r: Row) {
     if (meta.level === "L7") return false;
     if (d.includes("coed")) return false;
     if (meta.age === "U16" || meta.age === "U18" || meta.age === "Open") return false;
-    if (meta.size === "X-Large" || meta.size === null) return false;
+    if (meta.size === "X-Large") return false;
 
     return true;
   }
