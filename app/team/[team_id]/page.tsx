@@ -27,11 +27,37 @@ function toNum(v: any): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+function computeHitRate(rows: Row[]) {
+  let hits = 0;
+  let total = 0;
+
+  for (const r of rows) {
+    const ded = Number(r.deductions ?? 0);
+
+    if (Number.isFinite(ded)) {
+      total += 1;
+
+      if (ded === 0) {
+        hits += 1;
+      }
+    }
+  }
+
+  const rate = total ? hits / total : 0;
+
+  return {
+    hits,
+    total,
+    pct: rate * 100,
+  };
+}
+
 export default function TeamProfilePage() {
   const params = useParams<{ team_id: string }>();
   const teamId = params.team_id;
 
   const [rows, setRows] = useState<Row[]>([]);
+  const [performanceRows, setPerformanceRows] = useState<Row[]>([]);
   const [error, setError] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -40,31 +66,61 @@ export default function TeamProfilePage() {
   useEffect(() => {
     let cancelled = false;
 
-    async function load() {
-      setLoading(true);
-      setError(null);
+   async function load() {
+  setLoading(true);
+  setError(null);
 
-      const { data, error } = await supabase
-       .from("v_team_event_scores")
-       .select("*")
-        .eq("team_id", params.team_id)
-       .order("weekend_date", { ascending: true });
+  const { data, error } = await supabase
+    .from("v_team_event_scores")
+    .select("*")
+    .eq("team_id", params.team_id)
+    .order("weekend_date", { ascending: true });
 
-      if (cancelled) return;
+  if (cancelled) return;
 
-      if (error) setError(error);
-      else setRows(data ?? []);
+  if (error) {
+    setError(error);
+    setRows([]);
+    setPerformanceRows([]);
+    setLoading(false);
+    return;
+  }
 
-      setLoading(false);
+  const eventRows = data ?? [];
+  setRows(eventRows);
+
+  const team = String(eventRows[0]?.team ?? "").trim();
+  const program = String(eventRows[0]?.program ?? "").trim();
+
+  if (teamId) {
+    const { data: perfData, error: perfError } = await supabase
+      .from("v_team_performance_scores")
+      .select("*")
+      .eq("team_id", teamId)
+      .order("event_id", { ascending: true });
+
+    if (cancelled) return;
+
+    if (perfError) {
+      console.error("Performance query failed:", perfError);
+      setPerformanceRows([]);
+    } else {
+      setPerformanceRows(perfData ?? []);
     }
+  } else {
+    setPerformanceRows([]);
+  }
 
-    load();
-    return () => {
-      cancelled = true;
-    };
-  }, [teamId]);
+  setLoading(false);
+}
 
+load();
+return () => {
+  cancelled = true;
+};
+}, [teamId]);
   const filtered = useMemo(() => rows, [rows]);
+  const hitRate = useMemo(() => computeHitRate(performanceRows), [performanceRows]);
 
 const trendData = useMemo(() => {
   const map = new Map<
@@ -119,9 +175,8 @@ const trendData = useMemo(() => {
     const best = scores.length ? Math.max(...scores) : null;
 
     const events = new Set(filtered.map((r) => String(r.event_name ?? r.event_id ?? ""))).size;
-    const weekends = new Set(filtered.map((r) => String(r.weekend_date ?? ""))).size;
 
-    return { rows: filtered.length, events, weekends, avg, best };
+    return { rows: filtered.length, events, avg, best };
   }, [filtered]);
 
   return (
@@ -159,9 +214,7 @@ const trendData = useMemo(() => {
           <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-200">
             Events: <span className="font-semibold">{loading ? "…" : stats.events}</span>
           </span>
-          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-200">
-            Weekends: <span className="font-semibold">{loading ? "…" : stats.weekends}</span>
-          </span>
+
         </div>
       </div>
 
@@ -184,6 +237,18 @@ const trendData = useMemo(() => {
         </div>
 
         <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+          <div className="text-xs uppercase tracking-wide text-slate-400">Hit Zero Rate</div>
+
+          <div className="mt-2 text-2xl font-extrabold text-teal-300">
+            {loading ? "—" : `${hitRate.pct.toFixed(1)}%`}
+          </div>
+
+          <div className="mt-1 text-xs text-slate-400">
+            {loading ? "—" : `${hitRate.hits}/${hitRate.total} performances hit zero`}
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
           <div className="text-xs uppercase tracking-wide text-slate-400">Events</div>
           <div className="mt-2 text-2xl font-extrabold text-slate-100">
             {loading ? "—" : stats.events}
@@ -191,13 +256,7 @@ const trendData = useMemo(() => {
           <div className="mt-1 text-xs text-slate-400">Unique events</div>
         </div>
 
-        <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-          <div className="text-xs uppercase tracking-wide text-slate-400">Weekends</div>
-          <div className="mt-2 text-2xl font-extrabold text-slate-100">
-            {loading ? "—" : stats.weekends}
-          </div>
-          <div className="mt-1 text-xs text-slate-400">Unique weekends</div>
-        </div>
+       
       </div>
     </div>
 
@@ -305,8 +364,6 @@ const trendData = useMemo(() => {
                 <th className="px-3 py-3">Division</th>
                 <th className="px-3 py-3">Size</th>
                 <th className="px-3 py-3 text-right">Raw</th>
-                <th className="px-3 py-3 text-right">Ded</th>
-                <th className="px-3 py-3 text-right">Perf</th>
                 <th className="px-3 py-3 text-right">Event</th>
               </tr>
             </thead>
@@ -332,14 +389,6 @@ const trendData = useMemo(() => {
 
                   <td className="px-3 py-3 text-right">
                      {r.raw_score?.toFixed(2)}
-                  </td>
-
-                  <td className="px-3 py-3 text-right">
-                    {r.deductions}
-                  </td>
-
-                  <td className="px-3 py-3 text-right">
-                    {r.performance_score?.toFixed(3)}
                   </td>
 
                   <td className="px-3 py-3 text-right font-semibold">
