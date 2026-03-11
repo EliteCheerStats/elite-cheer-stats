@@ -9,8 +9,7 @@ export default function Home() {
         </h1>
 
         <p className="text-slate-400 mb-10 text-lg">
-          Competitive intelligence for serious cheer families.
-          Explore results, rankings, and build your own competition view.
+          The most advanced cheer analytics platform ever built.
         </p>
 
         <div className="grid md:grid-cols-2 gap-6">
