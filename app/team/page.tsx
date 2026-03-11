@@ -13,6 +13,7 @@ type TeamHit = {
   event_count?: number;
   first_event_date?: string | null;
   last_event_date?: string | null;
+  rows?: number;
 };
 
 export default function TeamSearchPage() {
