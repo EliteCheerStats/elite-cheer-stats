@@ -64,7 +64,7 @@ export default function TeamSearchPage() {
         const team = String(r.team ?? "");
         const program = String(r.program ?? "");
         const programId = (r.program_id ?? null) as string | null;
-        const wd = (r.weekend_date ?? null) as string | null;
+        const wd = (r.last_event_date ?? r.first_event_date ?? null) as string | null;
 
         const existing = map.get(teamId);
 
