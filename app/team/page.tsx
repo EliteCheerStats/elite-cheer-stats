@@ -10,9 +10,9 @@ type TeamHit = {
   team: string;
   program: string;
   team_display_name: string;
-  rows?: number;
-  first_week?: string | null;
-  last_week?: string | null;
+  event_count?: number;
+  first_event_date?: string | null;
+  last_event_date?: string | null;
 };
 
 export default function TeamSearchPage() {
@@ -28,24 +28,26 @@ export default function TeamSearchPage() {
     let cancelled = false;
 
     async function run() {
-      setError(null);
+  setError(null);
 
-      if (q.length < 2) {
-        setHits([]);
-        setLoading(false);
-        return;
-      }
+  const search = q.trim();
 
-      setLoading(true);
+  if (search.length < 3) {
+    setHits([]);
+    setLoading(false);
+    return;
+  }
 
-      const { data, error } = await supabase
-        .from("v_team_event_scores")
-        .select("team_id, program_id, team, program, weekend_date")
-        .ilike("team", `%${q}%`)
-        .limit(5000);
+  setLoading(true);
 
-      if (cancelled) return;
+ const { data, error } = await supabase
+  .from("mv_team_search_rebuilt")
+  .select("team_id, program_id, team, program, event_count, first_event_date, last_event_date")
+  .ilike("team", `%${search}%`)
+  .order("team")
+  .limit(100);
 
+  if (cancelled) return;
       if (error) {
         setError(error);
         setHits([]);
@@ -68,15 +70,15 @@ export default function TeamSearchPage() {
 
         if (!existing) {
           map.set(teamId, {
-            team_id: teamId,
-            program_id: programId,
-            team,
-            program,
-            team_display_name: `${team} — ${program}`,
-            rows: 1,
-            first_week: wd,
-            last_week: wd,
-          });
+  team_id: teamId,
+  program_id: (r.program_id as string | null) ?? null,
+  team: String(r.team ?? ""),
+  program: String(r.program ?? ""),
+  team_display_name: `${String(r.team ?? "")} — ${String(r.program ?? "")}`,
+  event_count: Number(r.event_count ?? 0),
+  first_event_date: (r.first_event_date as string | null) ?? null,
+  last_event_date: (r.last_event_date as string | null) ?? null,
+});
         } else {
           existing.rows = (existing.rows ?? 0) + 1;
 
@@ -183,9 +185,8 @@ export default function TeamSearchPage() {
                 Program: {h.program}
               </div>
               <div style={{ opacity: 0.75, fontSize: 13 }}>
-                Weeks: {h.first_week ?? "—"} → {h.last_week ?? "—"} • Rows scanned:{" "}
-                {h.rows ?? 0}
-              </div>
+  Events: {h.event_count ?? 0} • Dates: {h.first_event_date ?? "—"} → {h.last_event_date ?? "—"}
+</div>
             </div>
 
             <Link

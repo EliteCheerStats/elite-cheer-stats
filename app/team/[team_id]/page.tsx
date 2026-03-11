@@ -60,7 +60,7 @@ export default function TeamProfilePage() {
   const [performanceRows, setPerformanceRows] = useState<Row[]>([]);
   const [error, setError] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-
+  const [showCeiling, setShowCeiling] = useState(true);
 
 
   useEffect(() => {
@@ -70,67 +70,113 @@ export default function TeamProfilePage() {
   setLoading(true);
   setError(null);
 
-  const { data, error } = await supabase
-    .from("v_team_event_scores")
-    .select("*")
-    .eq("team_id", params.team_id)
-    .order("weekend_date", { ascending: true });
+  const currentTeamId = params.team_id;
+
+  const [
+    { data: eventData, error: eventError },
+    { data: ceilingData, error: ceilingError },
+    { data: perfData, error: perfError },
+  ] = await Promise.all([
+    supabase
+      .from("mv_team_event_scores")
+      .select(`
+        team_id,
+        program_id,
+        program,
+        team,
+        event_id,
+        event_name,
+        weekend_date,
+        division,
+        size_effective,
+        event_score
+      `)
+      .eq("team_id", currentTeamId)
+      .order("weekend_date", { ascending: true }),
+
+    supabase
+      .from("mv_team_event_ceiling_rebuilt")
+      .select(`
+        team_id,
+        event_id,
+        ceiling_score,
+        ceiling_delta,
+        ceiling_method,
+        ceiling_supported,
+        round_count
+      `)
+      .eq("team_id", currentTeamId),
+
+    supabase
+      .from("mv_team_performance_scores")
+      .select(`
+        team_id,
+        event_id,
+        weekend_date,
+        deductions,
+        hit_zero
+      `)
+      .eq("team_id", currentTeamId)
+      .order("weekend_date", { ascending: true }),
+  ]);
 
   if (cancelled) return;
 
-  if (error) {
-    setError(error);
+  if (eventError) {
+    setError(eventError);
     setRows([]);
     setPerformanceRows([]);
     setLoading(false);
     return;
   }
 
-  const eventRows = data ?? [];
-  setRows(eventRows);
-
-  const team = String(eventRows[0]?.team ?? "").trim();
-  const program = String(eventRows[0]?.program ?? "").trim();
-
-  if (teamId) {
-    const { data: perfData, error: perfError } = await supabase
-      .from("v_team_performance_scores")
-      .select("*")
-      .eq("team_id", teamId)
-      .order("event_id", { ascending: true });
-
-    if (cancelled) return;
-
-    if (perfError) {
-      console.error("Performance query failed:", perfError);
-      setPerformanceRows([]);
-    } else {
-      setPerformanceRows(perfData ?? []);
-    }
-  } else {
-    setPerformanceRows([]);
+  if (ceilingError) {
+    console.error("Ceiling query failed:", ceilingError);
   }
 
+  if (perfError) {
+    console.error("Performance query failed:", perfError);
+  }
+
+  const eventRows = eventData ?? [];
+  const ceilings = new Map(
+    (ceilingData ?? []).map((c: any) => [String(c.event_id), c])
+  );
+
+  const mergedRows = eventRows.map((r: any) => {
+    const c = ceilings.get(String(r.event_id));
+    return {
+      ...r,
+      ceiling_score_true: c?.ceiling_score ?? null,
+      ceiling_delta: c?.ceiling_delta ?? null,
+      ceiling_method: c?.ceiling_method ?? null,
+      ceiling_supported: c?.ceiling_supported ?? false,
+      round_count: c?.round_count ?? null,
+    };
+  });
+
+  setRows(mergedRows);
+  setPerformanceRows(perfData ?? []);
   setLoading(false);
 }
-
 load();
 return () => {
   cancelled = true;
 };
-}, [teamId]);
+}, [params.team_id]);
   const filtered = useMemo(() => rows, [rows]);
   const hitRate = useMemo(() => computeHitRate(performanceRows), [performanceRows]);
 
 const trendData = useMemo(() => {
   const map = new Map<
     string,
-    { score: number; event: string }
+    { score: number; ceiling: number | null; event: string }
   >();
 
   for (const r of filtered) {
     const wd = String(r.weekend_date ?? "");
     const score = toNum(r.event_score);
+    const ceiling = r.ceiling_supported ? toNum(r.ceiling_score_true) : null;
     const event = String(r.event_name ?? "");
 
     if (!wd || score === null) continue;
@@ -140,6 +186,7 @@ const trendData = useMemo(() => {
     if (!existing || score > existing.score) {
       map.set(wd, {
         score,
+        ceiling,
         event,
       });
     }
@@ -149,10 +196,36 @@ const trendData = useMemo(() => {
     .map(([weekend, value]) => ({
       weekend,
       event_score: value.score,
+      ceiling_score: value.ceiling,
       event: value.event,
     }))
     .sort((a, b) => a.weekend.localeCompare(b.weekend));
 }, [filtered]);
+
+console.table(
+  trendData.map((d) => ({
+    weekend: d.weekend,
+    event: d.event,
+    event_score: d.event_score,
+    ceiling_score: d.ceiling_score,
+    delta:
+      d.ceiling_score != null && d.event_score != null
+        ? Number((d.ceiling_score - d.event_score).toFixed(4))
+        : null,
+  }))
+);
+
+
+console.table(
+  filtered.map((r) => ({
+    weekend: r.weekend_date,
+    event: r.event_name,
+    event_score: r.event_score,
+    ceiling_score_true: r.ceiling_score_true,
+    ceiling_supported: r.ceiling_supported,
+    ceiling_method: r.ceiling_method,
+  }))
+);
 
   const header = useMemo(() => {
     const first = rows[0];
@@ -306,7 +379,17 @@ const trendData = useMemo(() => {
       Points: <span className="font-semibold text-slate-200">{trendData.length}</span>
     </div>
   </div>
-
+  <div className="flex items-center gap-2 mt-4 mb-2">
+    <input
+      id="toggle-ceiling"
+      type="checkbox"
+      checked={showCeiling}
+      onChange={(e) => setShowCeiling(e.target.checked)}
+    />
+    <label htmlFor="toggle-ceiling" className="text-sm text-slate-300">
+      Show Ceiling Score
+    </label>
+</div>
   <div className="mt-4 h-64">
     {trendData.length < 2 ? (
       <div className="flex h-full items-center justify-center text-sm text-slate-400">
@@ -342,6 +425,7 @@ const trendData = useMemo(() => {
             }}
           />
           <Line
+            name="Actual Score"
             type="monotone"
             dataKey="event_score"
             stroke="rgba(45,212,191,0.95)"
@@ -349,6 +433,18 @@ const trendData = useMemo(() => {
             dot={{ r: 3 }}
             activeDot={{ r: 5 }}
           />
+
+          {showCeiling && trendData.some((d) => d.ceiling_score != null) && (
+  <Line
+    name="Ceiling Score"
+    type="monotone"
+    dataKey="ceiling_score"
+    stroke="#A855F7"
+    strokeDasharray="6 6"
+    strokeWidth={2}
+    dot={false}
+  />
+)}
         </LineChart>
       </ResponsiveContainer>
     )}
@@ -363,8 +459,10 @@ const trendData = useMemo(() => {
                 <th className="px-3 py-3">Event</th>
                 <th className="px-3 py-3">Division</th>
                 <th className="px-3 py-3">Size</th>
-                <th className="px-3 py-3 text-right">Raw</th>
-                <th className="px-3 py-3 text-right">Event</th>
+                <th className="px-3 py-3 text-right">Score</th>
+                <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-400">
+                  Ceiling
+                </th>
               </tr>
             </thead>
 
@@ -387,12 +485,14 @@ const trendData = useMemo(() => {
                     {String(r.size_effective ?? "—")}
                   </td>
 
-                  <td className="px-3 py-3 text-right">
-                     {r.raw_score?.toFixed(2)}
+                  <td className="px-3 py-2 text-right font-semibold">
+                    {Number(r.event_score).toFixed(3)}
                   </td>
 
-                  <td className="px-3 py-3 text-right font-semibold">
-                    {r.event_score?.toFixed(3)}
+                  <td className="px-3 py-2 text-right text-slate-400">
+                    {r.ceiling_supported
+                    ? Number(r.ceiling_score_true).toFixed(3)
+                    : "—"}
                   </td>
                  
                 </tr>
