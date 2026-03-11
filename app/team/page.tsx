@@ -10,10 +10,12 @@ type TeamHit = {
   team: string;
   program: string;
   team_display_name: string;
-  event_count?: number;
+  event_count?: number | null;
   first_event_date?: string | null;
   last_event_date?: string | null;
   rows?: number;
+  first_week?: string | null;
+  last_week?: string | null;
 };
 
 export default function TeamSearchPage() {
