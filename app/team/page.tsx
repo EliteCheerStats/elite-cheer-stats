@@ -44,11 +44,18 @@ export default function TeamSearchPage() {
   setLoading(true);
 
  const { data, error } = await supabase
-  .from("mv_team_search_rebuilt")
-  .select("team_id, program_id, team, program, event_count, first_event_date, last_event_date")
+  .from("v_team_event_scores")
+  .select(`
+    team_id,
+    program_id,
+    team,
+    program,
+    event_id,
+    weekend_date
+  `)
   .ilike("team", `%${search}%`)
   .order("team")
-  .limit(100);
+  .limit(500);
 
   if (cancelled) return;
       if (error) {
@@ -60,50 +67,64 @@ export default function TeamSearchPage() {
 
       const map = new Map<string, TeamHit>();
 
-      for (const r of data ?? []) {
-        const teamId = String(r.team_id ?? "");
-        if (!teamId) continue;
+for (const r of data ?? []) {
+  const teamId = String(r.team_id ?? "");
+  if (!teamId) continue;
 
-        const team = String(r.team ?? "");
-        const program = String(r.program ?? "");
-        const programId = (r.program_id ?? null) as string | null;
-        const wd = (r.last_event_date ?? r.first_event_date ?? null) as string | null;
+  const weekendDate = String(r.weekend_date ?? "");
+  const existing = map.get(teamId);
 
-        const existing = map.get(teamId);
+  if (!existing) {
+    map.set(teamId, {
+      team_id: teamId,
+      program_id: (r.program_id as string | null) ?? null,
+      team: String(r.team ?? ""),
+      program: String(r.program ?? ""),
+      team_display_name: `${String(r.team ?? "")} — ${String(r.program ?? "")}`,
+      event_count: weekendDate ? 1 : 0,
+      first_event_date: weekendDate || null,
+      last_event_date: weekendDate || null,
+      rows: 1,
+      last_week: weekendDate || null,
+      event_ids: new Set([String(r.event_id ?? "")]),
+    } as TeamHit & { event_ids: Set<string> });
+  } else {
+    existing.rows = (existing.rows ?? 0) + 1;
 
-        if (!existing) {
-          map.set(teamId, {
-  team_id: teamId,
-  program_id: (r.program_id as string | null) ?? null,
-  team: String(r.team ?? ""),
-  program: String(r.program ?? ""),
-  team_display_name: `${String(r.team ?? "")} — ${String(r.program ?? "")}`,
-  event_count: Number(r.event_count ?? 0),
-  first_event_date: (r.first_event_date as string | null) ?? null,
-  last_event_date: (r.last_event_date as string | null) ?? null,
-});
-        } else {
-          existing.rows = (existing.rows ?? 0) + 1;
+    const eventId = String(r.event_id ?? "");
+    if (!(existing as any).event_ids) {
+      (existing as any).event_ids = new Set<string>();
+    }
+    if (eventId) {
+      (existing as any).event_ids.add(eventId);
+      existing.event_count = (existing as any).event_ids.size;
+    }
 
-          if (wd) {
-            if (!existing.first_week || wd < existing.first_week) {
-              existing.first_week = wd;
-            }
-            if (!existing.last_week || wd > existing.last_week) {
-              existing.last_week = wd;
-            }
-          }
-        }
+    if (weekendDate) {
+      if (!existing.first_event_date || weekendDate < existing.first_event_date) {
+        existing.first_event_date = weekendDate;
       }
+      if (!existing.last_event_date || weekendDate > existing.last_event_date) {
+        existing.last_event_date = weekendDate;
+        existing.last_week = weekendDate;
+      }
+    }
+  }
+}
 
-      const list = Array.from(map.values()).sort((a, b) => {
-        const ad = a.last_week ?? "";
-        const bd = b.last_week ?? "";
-        if (ad !== bd) return bd.localeCompare(ad);
-        return (b.rows ?? 0) - (a.rows ?? 0);
-      });
+const list = Array.from(map.values())
+  .map((h: any) => {
+    delete h.event_ids;
+    return h;
+  })
+  .sort((a, b) => {
+    const ad = a.last_week ?? "";
+    const bd = b.last_week ?? "";
+    if (ad !== bd) return bd.localeCompare(ad);
+    return (b.rows ?? 0) - (a.rows ?? 0);
+  });
 
-      setHits(list);
+setHits(list);
       setLoading(false);
     }
 
@@ -188,7 +209,7 @@ export default function TeamSearchPage() {
                 Program: {h.program}
               </div>
               <div style={{ opacity: 0.75, fontSize: 13 }}>
-  Events: {h.event_count ?? 0} • Dates: {h.first_event_date ?? "—"} → {h.last_event_date ?? "—"}
+  Events: {h.event_count ?? 0} • Weekends: {h.first_event_date ?? "—"} → {h.last_event_date ?? "—"}
 </div>
             </div>
 

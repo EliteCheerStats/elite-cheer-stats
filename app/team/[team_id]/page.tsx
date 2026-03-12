@@ -56,6 +56,9 @@ export default function TeamProfilePage() {
   const params = useParams<{ team_id: string }>();
   const teamId = params.team_id;
 
+  console.log("ROUTE team_id:", teamId);
+  console.log("EXPECTED Chill canonical id:", "a138e8e2-2129-4c3b-99c5-7ac67bf70ba1");
+
   const [rows, setRows] = useState<Row[]>([]);
   const [performanceRows, setPerformanceRows] = useState<Row[]>([]);
   const [error, setError] = useState<any>(null);
@@ -63,106 +66,149 @@ export default function TeamProfilePage() {
   const [showCeiling, setShowCeiling] = useState(true);
 
 
-  useEffect(() => {
-    let cancelled = false;
+ useEffect(() => {
+  let cancelled = false;
 
-   async function load() {
-  setLoading(true);
-  setError(null);
+  async function load() {
+    try {
+      setLoading(true);
+      setError(null);
 
-  const currentTeamId = params.team_id;
+      const currentTeamId = params.team_id;
 
-  const [
-    { data: eventData, error: eventError },
-    { data: ceilingData, error: ceilingError },
-    { data: perfData, error: perfError },
-  ] = await Promise.all([
-    supabase
-      .from("mv_team_event_scores")
-      .select(`
-        team_id,
-        program_id,
-        program,
-        team,
-        event_id,
-        event_name,
-        weekend_date,
-        division,
-        size_effective,
-        event_score
-      `)
-      .eq("team_id", currentTeamId)
-      .order("weekend_date", { ascending: true }),
+      const { data: eventData, error: eventError } = await supabase
+        .from("v_team_event_scores")
+        .select(`
+          team_id,
+          program_id,
+          program,
+          team,
+          event_id,
+          event_name,
+          weekend_date,
+          division,
+          size_effective,
+          event_score
+        `)
+        .eq("team_id", currentTeamId)
+        .order("weekend_date", { ascending: true });
 
-    supabase
-      .from("mv_team_event_ceiling_rebuilt")
-      .select(`
-        team_id,
-        event_id,
-        ceiling_score,
-        ceiling_delta,
-        ceiling_method,
-        ceiling_supported,
-        round_count
-      `)
-      .eq("team_id", currentTeamId),
+      if (eventError) {
+        if (!cancelled) {
+          setError(eventError);
+          setRows([]);
+          setPerformanceRows([]);
+          setLoading(false);
+        }
+        return;
+      }
 
-    supabase
-      .from("mv_team_performance_scores")
-      .select(`
-        team_id,
-        event_id,
-        weekend_date,
-        deductions,
-        hit_zero
-      `)
-      .eq("team_id", currentTeamId)
-      .order("weekend_date", { ascending: true }),
-  ]);
+      const eventRows = eventData ?? [];
+      const eventIds = Array.from(
+        new Set(
+          eventRows
+            .map((r: any) => String(r.event_id ?? ""))
+            .filter(Boolean)
+        )
+      );
 
-  if (cancelled) return;
+            let ceilingData: any[] = [];
+      let perfData: any[] = [];
 
-  if (eventError) {
-    setError(eventError);
-    setRows([]);
-    setPerformanceRows([]);
-    setLoading(false);
-    return;
+      if (eventIds.length > 0 && eventRows.length > 0) {
+        const selectedTeam = String(eventRows[0]?.team ?? "").trim().toLowerCase();
+        const selectedProgramId = String(eventRows[0]?.program_id ?? "");
+
+        const { data: perfRes, error: perfError } = await supabase
+          .from("mv_team_performance_scores")
+          .select(`
+            team,
+            program,
+            program_id,
+            team_id,
+            team_lineage_id,
+            event_id,
+            weekend_date,
+            deductions,
+            hit_zero
+          `)
+          .in("event_id", eventIds)
+          .eq("program_id", selectedProgramId)
+          .order("weekend_date", { ascending: true });
+
+        if (perfError) {
+          console.error("Performance query failed:", perfError);
+        } else {
+          perfData = (perfRes ?? []).filter(
+            (r: any) =>
+              String(r.team ?? "").trim().toLowerCase() === selectedTeam
+          );
+        }
+
+        const selectedLineageId = String(perfData[0]?.team_lineage_id ?? "");
+
+        if (selectedLineageId) {
+          const { data: ceilingRes, error: ceilingError } = await supabase
+            .from("mv_team_event_ceiling_rebuilt")
+            .select(`
+              team_id,
+              team_lineage_id,
+              program_id,
+              event_id,
+              ceiling_score,
+              ceiling_delta,
+              ceiling_method,
+              ceiling_supported,
+              round_count
+            `)
+            .in("event_id", eventIds)
+            .eq("program_id", selectedProgramId)
+            .eq("team_lineage_id", selectedLineageId);
+
+          if (ceilingError) {
+            console.error("Ceiling query failed:", ceilingError);
+          } else {
+            ceilingData = ceilingRes ?? [];
+          }
+        }
+      }
+
+      const ceilings = new Map(
+        ceilingData.map((c: any) => [String(c.event_id), c])
+      );
+
+      const mergedRows = eventRows.map((r: any) => {
+        const c = ceilings.get(String(r.event_id));
+        return {
+          ...r,
+          ceiling_score_true: c?.ceiling_score ?? null,
+          ceiling_delta: c?.ceiling_delta ?? null,
+          ceiling_method: c?.ceiling_method ?? null,
+          ceiling_supported: c?.ceiling_supported ?? false,
+          round_count: c?.round_count ?? null,
+        };
+      });
+
+      if (!cancelled) {
+        setRows(mergedRows);
+        setPerformanceRows(perfData);
+        setLoading(false);
+      }
+    } catch (err) {
+      if (!cancelled) {
+        setError(err);
+        setRows([]);
+        setPerformanceRows([]);
+        setLoading(false);
+      }
+    }
   }
 
-  if (ceilingError) {
-    console.error("Ceiling query failed:", ceilingError);
-  }
+  load();
 
-  if (perfError) {
-    console.error("Performance query failed:", perfError);
-  }
-
-  const eventRows = eventData ?? [];
-  const ceilings = new Map(
-    (ceilingData ?? []).map((c: any) => [String(c.event_id), c])
-  );
-
-  const mergedRows = eventRows.map((r: any) => {
-    const c = ceilings.get(String(r.event_id));
-    return {
-      ...r,
-      ceiling_score_true: c?.ceiling_score ?? null,
-      ceiling_delta: c?.ceiling_delta ?? null,
-      ceiling_method: c?.ceiling_method ?? null,
-      ceiling_supported: c?.ceiling_supported ?? false,
-      round_count: c?.round_count ?? null,
-    };
-  });
-
-  setRows(mergedRows);
-  setPerformanceRows(perfData ?? []);
-  setLoading(false);
-}
-load();
-return () => {
-  cancelled = true;
-};
+  return () => {
+    cancelled = true;
+  };
 }, [params.team_id]);
   const filtered = useMemo(() => rows, [rows]);
   const hitRate = useMemo(() => computeHitRate(performanceRows), [performanceRows]);
@@ -412,18 +458,19 @@ console.table(
             axisLine={{ stroke: "rgba(255,255,255,0.12)" }}
           />
           <Tooltip
-            contentStyle={{
-            background: "rgba(2,6,23,0.95)",
-             border: "1px solid rgba(255,255,255,0.12)",
-             borderRadius: 12,
-             color: "white",
-            }}
-            labelStyle={{ color: "rgba(226,232,240,0.8)" }}
-            labelFormatter={(label, payload) => {
-              if (!payload || !payload.length) return label
-              return payload[0].payload.event
-            }}
-          />
+  contentStyle={{
+    background: "rgba(2,6,23,0.95)",
+    border: "1px solid rgba(255,255,255,0.12)",
+    borderRadius: 12,
+    color: "white",
+  }}
+  labelStyle={{ color: "rgba(226,232,240,0.8)" }}
+  labelFormatter={(label, payload) => {
+    if (!payload || !payload.length) return label;
+    return payload[0].payload.event;
+  }}
+  formatter={(value, name) => [Number(value).toFixed(3), name]}
+/>
           <Line
             name="Actual Score"
             type="monotone"
