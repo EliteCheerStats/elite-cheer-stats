@@ -120,21 +120,25 @@ export default function TeamProfilePage() {
         const selectedProgramId = String(eventRows[0]?.program_id ?? "");
 
         const { data: perfRes, error: perfError } = await supabase
-          .from("mv_team_performance_scores")
-          .select(`
-            team,
-            program,
-            program_id,
-            team_id,
-            team_lineage_id,
-            event_id,
-            weekend_date,
-            deductions,
-            hit_zero
-          `)
-          .in("event_id", eventIds)
-          .eq("program_id", selectedProgramId)
-          .order("weekend_date", { ascending: true });
+  .from("v_results_normalized")
+  .select(`
+    team,
+    program,
+    program_id,
+    team_id,
+    event_id,
+    weekend_date,
+    round,
+    round_raw,
+    round_phase,
+    raw_score,
+    deductions,
+    performance_score,
+    event_score
+  `)
+  .eq("team_id", currentTeamId)
+  .in("round_phase", ["Prelims", "Finals"])
+  .order("weekend_date", { ascending: true });
 
         if (perfError) {
           console.error("Performance query failed:", perfError);
@@ -145,35 +149,29 @@ export default function TeamProfilePage() {
           );
         }
 
-        const selectedLineageId = String(perfData[0]?.team_lineage_id ?? "");
+       if (currentTeamId && eventIds.length > 0) {
+    const { data: ceilingRes, error: ceilingError } = await supabase
+      .from("mv_team_event_ceiling_rebuilt")
+      .select(`
+        team_id,
+        event_id,
+        ceiling_score,
+        ceiling_delta,
+        ceiling_method,
+        ceiling_supported,
+        round_count
+      `)
+      .in("event_id", eventIds)
+      .eq("team_id", currentTeamId);
 
-        if (selectedLineageId) {
-          const { data: ceilingRes, error: ceilingError } = await supabase
-            .from("mv_team_event_ceiling_rebuilt")
-            .select(`
-              team_id,
-              team_lineage_id,
-              program_id,
-              event_id,
-              ceiling_score,
-              ceiling_delta,
-              ceiling_method,
-              ceiling_supported,
-              round_count
-            `)
-            .in("event_id", eventIds)
-            .eq("program_id", selectedProgramId)
-            .eq("team_lineage_id", selectedLineageId);
-
-          if (ceilingError) {
-            console.error("Ceiling query failed:", ceilingError);
-          } else {
-            ceilingData = ceilingRes ?? [];
-          }
-        }
-      }
-
-      const ceilings = new Map(
+    if (ceilingError) {
+      console.error("Ceiling query failed:", ceilingError);
+    } else {
+      ceilingData = ceilingRes ?? [];
+    }
+  }  
+}     
+          const ceilings = new Map(
         ceilingData.map((c: any) => [String(c.event_id), c])
       );
 
