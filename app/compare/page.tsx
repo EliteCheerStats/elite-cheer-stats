@@ -468,12 +468,15 @@ export default function TeamComparisonPage() {
     return mergeSeries("teamA", "teamB", seriesA, seriesB);
   }, [teamA, teamB, seriesA, seriesB]);
 
-  const seasonLabel = chartData.length
-  ? `${new Date(chartData[0].weekend_date).toLocaleString("default", { month: "short" })} → ${new Date(
-      chartData[chartData.length - 1].weekend_date
-    ).toLocaleString("default", { month: "short" })}`
-  : "";
+  const firstDate = chartData[0]?.weekend_date;
+const lastDate = chartData[chartData.length - 1]?.weekend_date;
 
+const seasonLabel =
+  firstDate && lastDate
+    ? `${new Date(firstDate).toLocaleString("default", { month: "short" })} → ${new Date(
+        lastDate
+      ).toLocaleString("default", { month: "short" })}`
+    : "";
   const hitZeroBarData = useMemo(
     () => [
       {
