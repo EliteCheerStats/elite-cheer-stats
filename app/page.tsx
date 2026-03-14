@@ -28,12 +28,20 @@ export default function Home() {
             </p>
           </Link>
 
+          <Link href="/compare" className="p-6 bg-slate-800 rounded-xl hover:bg-slate-700 transition">
+            <h2 className="text-2xl font-semibold">Team Comparison</h2>
+            <p className="text-slate-400 mt-2">
+              Compare two teams head-to-head across scores, ceilings, and hit-zero rates.
+            </p>
+          </Link>
+
           <Link href="/comp-builder" className="p-6 bg-teal-700 rounded-xl hover:bg-teal-600 transition">
             <h2 className="text-2xl font-semibold">Comp Builder</h2>
             <p className="mt-2">
               Build your specific competition matchup.
             </p>
           </Link>
+
         </div>
       </div>
     </main>

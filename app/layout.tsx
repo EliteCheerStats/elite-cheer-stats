@@ -43,6 +43,9 @@ export default function RootLayout({
   <a className="hover:text-white" href="/team">
     Team Search
   </a>
+  <a className="hover:text-white" href="/compare">
+  Team Comparison
+</a>
   <a
     className="rounded-lg bg-teal-500/15 px-3 py-1.5 text-teal-200 hover:bg-teal-500/25"
     href="/comp-builder"
