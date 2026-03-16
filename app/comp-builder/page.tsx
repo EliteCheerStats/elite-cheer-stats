@@ -1021,9 +1021,9 @@ const barDomain = useMemo(() => {
   axisLine={{ stroke: "rgba(255,255,255,0.12)" }}
   tickLine={{ stroke: "rgba(255,255,255,0.12)" }}
 />
-                    <Tooltip
-  formatter={(value: number, name: string) => [
-    typeof value === "number" ? value.toFixed(3) : value,
+  <Tooltip
+  formatter={(value, name) => [
+    typeof value === "number" ? value.toFixed(3) : String(value ?? "--"),
     name === "avgScore" ? "Average Event Score" : "Average Ceiling Score",
   ]}
   labelFormatter={(label) => label}
