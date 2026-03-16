@@ -53,7 +53,7 @@ export default function TeamSearchPage() {
     event_id,
     weekend_date
   `)
-  .ilike("team", `%${search}%`)
+  .or(`team.ilike.%${search}%,program.ilike.%${search}%`)
   .order("team")
   .limit(500);
 

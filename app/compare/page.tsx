@@ -505,8 +505,7 @@ const seasonLabel =
               Team Comparison Tool
             </h1>
             <p className="mt-2 max-w-3xl text-sm text-slate-400 md:text-base">
-              Compare two teams head-to-head across average score, average ceiling, hit zero rate,
-              and season-long trend lines.
+              Compare two teams head-to-head.  Who's better?
             </p>
           </div>
 
