@@ -1,3 +1,9 @@
+export const metadata = {
+  verification: {
+    google: "oHBzHb2mt2eoERIRB4U4SUVHfV2IUxWkZcmOY6qm1Fo",
+  },
+};
+
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
@@ -35,7 +41,7 @@ export default function RootLayout({
             <a href="/" className="text-lg font-bold tracking-tight">
               Elite Cheer <span className="text-teal-400">Stats</span>
             </a>
-
+            
             <nav className="flex flex-wrap items-center gap-2 text-sm text-slate-200 sm:gap-4">
   <a className="hover:text-white" href="/rankings">
     Rankings
