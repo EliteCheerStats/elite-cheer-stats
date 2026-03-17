@@ -23,7 +23,7 @@ const supabase =
       )
     : null;
 
-const ROLE_OPTIONS = ["Parent", "Coach", "Athlete", "Fan"] as const;
+const ROLE_OPTIONS = ["Parent", "Coach", "Athlete", "Owner"] as const;
 type Role = (typeof ROLE_OPTIONS)[number];
 
 type TeamOption = {
