@@ -688,19 +688,19 @@ const barDomain = useMemo(() => {
     return (
       <main className="min-h-screen bg-[#0B0F1A] text-white flex items-center justify-center px-4">
         <div className="w-full max-w-md rounded-2xl border border-white/10 bg-white/5 p-6">
-          <h1 className="text-xl font-semibold">Comp Builder</h1>
+          <h1 className="text-xl font-semibold">Comp Builder (Beta Access)</h1>
           <p className="mt-1 text-sm text-white/70">
-            Enter your email to view the Comp Builder preview.
+            Build your own competition lineup and compare teams before they hit the mat.
           </p>
           <p className="mt-1 text-sm text-white/50">
-            This feature is not live yet.
+            Free during Beta. Premium coming soon.
           </p>
 
           <label className="mt-5 block text-sm text-white/80">Email</label>
           <input
             value={gateEmail}
             onChange={(e) => setGateEmail(e.target.value)}
-            placeholder="you@example.com"
+            placeholder="Enter your email for instant access"
             className="mt-2 w-full rounded-md bg-black/30 border border-white/10 px-3 py-2 text-sm outline-none focus:border-teal-400/50"
           />
 
@@ -715,7 +715,7 @@ const barDomain = useMemo(() => {
           )}
 
           <div className="mt-4">
-            <div className="text-sm text-white/80">I’m a:</div>
+            <div className="text-sm text-white/80">I’m a...</div>
             <div className="mt-2 grid grid-cols-2 gap-2">
               {ROLE_OPTIONS.map((role) => (
                 <label
@@ -739,11 +739,11 @@ const barDomain = useMemo(() => {
             disabled={status === "loading"}
             className="mt-4 w-full rounded-md bg-teal-500/90 hover:bg-teal-500 px-4 py-2 text-sm font-medium disabled:opacity-50"
           >
-            {status === "loading" ? "Opening..." : "Continue"}
+            {status === "loading" ? "Opening..." : "Unlock Comp Builder"}
           </button>
 
           <p className="mt-4 text-xs text-white/50">
-            No spam. Just a launch notification when features are live.
+            No spam. Early access + updates before anyone else.
           </p>
         </div>
       </main>
