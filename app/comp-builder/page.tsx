@@ -684,7 +684,7 @@ const barDomain = useMemo(() => {
     primaryBannerText = `Your Focus Team: ${primaryTeam.name}`;
   }
 
-  if (!unlocked) {
+  if (false && !unlocked) {
     return (
       <main className="min-h-screen bg-[#0B0F1A] text-white flex items-center justify-center px-4">
         <div className="w-full max-w-md rounded-2xl border border-white/10 bg-white/5 p-6">
@@ -771,12 +771,14 @@ const barDomain = useMemo(() => {
             </div>
           </div>
 
-          <button
-            onClick={reset}
-            className="rounded-md border border-white/15 hover:bg-white/5 px-3 py-2 text-sm"
-          >
-            Reset Gate
-          </button>
+          {/*
+<button
+  onClick={reset}
+  className="rounded-md border border-white/15 hover:bg-white/5 px-3 py-2 text-sm"
+>
+  Reset Gate
+</button>
+*/}
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
