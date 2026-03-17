@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Elite Cheer Stats",
-  description: "The most advanced cheer analytics platform ever built.",
+  title: "Elite Cheer Stats | Competitive Cheer Analytics Platform",
+  description: "Elite Cheer Stats provides competitive cheer analytics, team comparisons, rankings, and performance insights for All-Star cheerleading.",
   verification: {
     google: "oHBzHb2mt2eoERIRB4U4SUvHfv2IUxWKzcmOY6qm1Fo",
   },
@@ -13,6 +13,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Analytics } from "@vercel/analytics/react";
 import Image from "next/image";
+import Link from "next/link";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -52,6 +53,9 @@ export default function RootLayout({
   </a>
   <a className="hover:text-white" href="/compare">
   Team Comparison
+</a>
+<a className="hover:text-white" href="/about">
+  About
 </a>
   <a
     className="rounded-lg bg-teal-500/15 px-3 py-1.5 text-teal-200 hover:bg-teal-500/25"

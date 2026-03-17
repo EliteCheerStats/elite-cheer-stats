@@ -11,7 +11,7 @@ export default function Home() {
   All-Star Cheer Analytics Platform
 </h1>
         <p className="text-slate-400 mb-10 text-lg">
-          The most advanced cheer analytics platform ever built.
+          Elite Cheer Stats is a competitive cheer analytics platform that allows users to compare teams, track rankings, and analyze performance for All-Star cheerleading competitions.
         </p>
 
         <div className="grid md:grid-cols-2 gap-6">
