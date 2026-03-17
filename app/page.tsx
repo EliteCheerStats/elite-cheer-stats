@@ -7,7 +7,9 @@ export default function Home() {
         <h1 className="text-5xl font-bold mb-4">
           Elite Cheer Stats
         </h1>
-
+<h1 className="text-3xl font-bold tracking-tight">
+  All-Star Cheer Analytics Platform
+</h1>
         <p className="text-slate-400 mb-10 text-lg">
           The most advanced cheer analytics platform ever built.
         </p>
@@ -24,21 +26,21 @@ export default function Home() {
           <Link href="/team" className="p-6 bg-slate-800 rounded-xl hover:bg-slate-700 transition">
             <h2 className="text-2xl font-semibold">Team Search</h2>
             <p className="text-slate-400 mt-2">
-              Track specific programs and performance trends.
+              Track any team's scores, trends, and performance over time
             </p>
           </Link>
 
           <Link href="/compare" className="p-6 bg-slate-800 rounded-xl hover:bg-slate-700 transition">
             <h2 className="text-2xl font-semibold">Team Comparison</h2>
             <p className="text-slate-400 mt-2">
-              Compare two teams head-to-head across scores, ceilings, and hit-zero rates.
+              Compare teams head-to-head across scores, ceilings, and consistency
             </p>
           </Link>
 
           <Link href="/comp-builder" className="p-6 bg-teal-700 rounded-xl hover:bg-teal-600 transition">
             <h2 className="text-2xl font-semibold">Comp Builder</h2>
             <p className="mt-2">
-              Build your specific competition matchup.
+              See how your team stacks up before they compete.
             </p>
           </Link>
 

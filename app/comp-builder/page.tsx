@@ -756,9 +756,13 @@ const barDomain = useMemo(() => {
         <div className="flex items-center justify-between gap-3 mb-6">
           <div>
             <h1 className="text-3xl font-semibold tracking-tight">Comp Builder</h1>
-            <p className="text-sm text-white/70">
-              Build your own custom comparison dashboard
-            </p>
+<h1 className="text-2xl font-bold">
+  See how teams stack up before they compete
+</h1>
+
+<p className="text-slate-300 mt-2">
+  Add up to 6 teams and instantly compare ceiling, consistency, and scores.
+</p>
           </div>
 
           <div className="flex-1 flex justify-center">
@@ -836,12 +840,13 @@ const barDomain = useMemo(() => {
               placeholder="Build your roster..."
               className="mt-4 w-full rounded-md bg-black/30 border border-white/10 px-3 py-2 text-sm outline-none focus:border-teal-400/50"
             />
-
             <div className="mt-4 space-y-2 max-h-[280px] overflow-auto pr-1">
               {searchTerm.trim().length < 2 ? (
-                <div className="text-sm text-white/40">
-                  Type at least 2 characters to search all teams.
-                </div>
+<div className="mt-3 text-sm text-slate-400 space-y-1">
+  <div>1. Search and add teams</div>
+  <div>2. Set your focus team</div>
+  <div>3. See how they stack up instantly</div>
+</div>
               ) : searchLoading ? (
                 <div className="text-sm text-white/40">Searching teams...</div>
               ) : searchResults.length === 0 ? (
@@ -933,7 +938,7 @@ const barDomain = useMemo(() => {
                 <div>
                   <h2 className="text-xl font-semibold">Your Comp Dashboard</h2>
                   <p className="text-sm text-white/60">
-                    Change your Focus Team for insights.
+                    Set a focus team to see how they stack up.
                   </p>
                 </div>
 
