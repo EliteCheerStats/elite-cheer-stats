@@ -1,10 +1,14 @@
-export const metadata = {
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Elite Cheer Stats",
+  description: "The most advanced cheer analytics platform ever built.",
   verification: {
     google: "oHBzHb2mt2eoERIRB4U4SUVHfV2IUxWkZcmOY6qm1Fo",
   },
 };
 
-import type { Metadata } from "next";
+
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Analytics } from "@vercel/analytics/react";
@@ -20,10 +24,7 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export const metadata: Metadata = {
-  title: "Elite Cheer Stats",
-  description: "The most advanced cheer analytics platform ever built.",
-};
+
 
 export default function RootLayout({
   children,
