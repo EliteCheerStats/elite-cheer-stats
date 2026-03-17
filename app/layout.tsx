@@ -4,7 +4,7 @@ export const metadata: Metadata = {
   title: "Elite Cheer Stats",
   description: "The most advanced cheer analytics platform ever built.",
   verification: {
-    google: "oHBzHb2mt2eoERIRB4U4SUVHfV2IUxWkZcmOY6qm1Fo",
+    google: "oHBzHb2mt2eoERIRB4U4SUvHfv2IUxWKzcmOY6qm1Fo",
   },
 };
 
