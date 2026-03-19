@@ -46,13 +46,14 @@ setLoading(true);
 const { data, error } = await supabase
   .from("v_team_event_scores")
   .select(`
-    team_id,
-    program_id,
-    team,
-    program,
-    event_id,
-    weekend_date
-  `)
+  team_id,
+  program_id,
+  team,
+  program,
+  team_display_name,
+  event_id,
+  weekend_date
+`)
   .or(`team.ilike.%${search}%,program.ilike.%${search}%`)
   .order("team")
   .limit(20);
