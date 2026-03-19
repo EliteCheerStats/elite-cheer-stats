@@ -35,15 +35,15 @@ export default function TeamSearchPage() {
 
   const search = q.trim();
 
-  if (search.length < 3) {
-    setHits([]);
-    setLoading(false);
-    return;
-  }
+if (search.length < 3) {
+  setHits([]);
+  setLoading(false);
+  return;
+}
 
-  setLoading(true);
+setLoading(true);
 
- const { data, error } = await supabase
+const { data, error } = await supabase
   .from("v_team_event_scores")
   .select(`
     team_id,
@@ -55,15 +55,28 @@ export default function TeamSearchPage() {
   `)
   .or(`team.ilike.%${search}%,program.ilike.%${search}%`)
   .order("team")
-  .limit(500);
+  .limit(20);
 
-  if (cancelled) return;
-      if (error) {
-        setError(error);
-        setHits([]);
-        setLoading(false);
-        return;
-      }
+if (cancelled) return;
+
+if (error) {
+  setError(error);
+  setHits([]);
+  setLoading(false);
+  return;
+}
+
+const seen = new Set<string>();
+
+const uniqueHits = (data ?? []).filter((row: any) => {
+  const key = String(row.team_id ?? "");
+  if (!key || seen.has(key)) return false;
+  seen.add(key);
+  return true;
+});
+
+setHits(uniqueHits);
+setLoading(false);
 
       const map = new Map<string, TeamHit>();
 

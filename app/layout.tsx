@@ -73,9 +73,11 @@ export default function RootLayout({
 
         <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6">{children}</main>
 
-        <footer className="mx-auto max-w-6xl px-4 pb-10 pt-2 text-xs text-slate-400 sm:px-6">
-          © {new Date().getFullYear()} Elite Cheer Stats
-        </footer>
+        <footer className="text-xs text-slate-400 text-center py-6 border-t border-slate-800 mt-12">
+  © 2026 Elite Cheer Stats · contactus@elitecheerstats.com ·
+  <a href="/privacy" className="underline ml-1">Privacy</a> ·
+  <a href="/terms" className="underline ml-1">Terms</a>
+</footer>
 
         <Analytics />
       </body>

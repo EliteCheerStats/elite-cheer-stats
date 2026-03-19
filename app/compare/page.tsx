@@ -48,6 +48,10 @@ type CeilingRow = {
 type PerfRow = {
   team_id: string;
   event_id: string;
+  weekend_date: string | null;
+  round: string | null;
+  round_raw: string | null;
+  round_phase: string | null;
   deductions: number | null;
 };
 
@@ -113,11 +117,13 @@ function computeHitRate(rows: PerfRow[]) {
   let total = 0;
 
   for (const r of rows) {
-    const ded = Number(r.deductions ?? 0);
-    if (Number.isFinite(ded)) {
-      total += 1;
-      if (Math.abs(ded) < 0.0001) hits += 1;
-    }
+    if (r.deductions === null || r.deductions === undefined) continue;
+
+    const ded = Number(r.deductions);
+    if (!Number.isFinite(ded)) continue;
+
+    total += 1;
+    if (Math.abs(ded) < 0.0001) hits += 1;
   }
 
   return {
@@ -218,11 +224,11 @@ export default function TeamComparisonPage() {
     const timer = setTimeout(async () => {
       try {
         setSearchingA(true);
-       const { data, error } = await supabase
-  .from("v_team_event_scores")
-  .select("team_id, program, team, division")
-  .ilike("team", `%${q}%`)
-  .limit(100);
+        const { data, error } = await supabase
+          .from("v_team_event_scores")
+          .select("team_id, program, team, division")
+          .ilike("team", `%${q}%`)
+          .limit(100);
 
         if (error) throw error;
         if (cancelled) return;
@@ -261,10 +267,10 @@ export default function TeamComparisonPage() {
       try {
         setSearchingB(true);
         const { data, error } = await supabase
-  .from("v_team_event_scores")
-  .select("team_id, program, team, division")
-  .ilike("team", `%${q}%`)
-  .limit(100);
+          .from("v_team_event_scores")
+          .select("team_id, program, team, division")
+          .ilike("team", `%${q}%`)
+          .limit(100);
 
         if (error) throw error;
         if (cancelled) return;
@@ -328,9 +334,13 @@ export default function TeamComparisonPage() {
                 .eq("team_id", teamA.team_id)
             : Promise.resolve({ data: [], error: null } as any),
           supabase
-            .from("results_rebuild")
-            .select("team_id, event_id, deductions")
-            .eq("team_id", teamA.team_id),
+            .from("v_results_normalized")
+            .select(
+              "team_id, event_id, weekend_date, round, round_raw, round_phase, deductions"
+            )
+            .eq("team_id", teamA.team_id)
+            .in("round_phase", ["Prelims", "Finals"])
+            .order("weekend_date", { ascending: true }),
         ]);
 
         if (ceilingRes.error) throw ceilingRes.error;
@@ -341,6 +351,7 @@ export default function TeamComparisonPage() {
         for (const row of (ceilingRes.data ?? []) as CeilingRow[]) {
           ceilingMap.set(String(row.event_id), row);
         }
+
         setCeilingsA(ceilingMap);
         setPerfA((perfRes.data ?? []) as PerfRow[]);
       } catch (e: any) {
@@ -392,9 +403,13 @@ export default function TeamComparisonPage() {
                 .eq("team_id", teamB.team_id)
             : Promise.resolve({ data: [], error: null } as any),
           supabase
-            .from("results_rebuild")
-            .select("team_id, event_id, deductions")
-            .eq("team_id", teamB.team_id),
+            .from("v_results_normalized")
+            .select(
+              "team_id, event_id, weekend_date, round, round_raw, round_phase, deductions"
+            )
+            .eq("team_id", teamB.team_id)
+            .in("round_phase", ["Prelims", "Finals"])
+            .order("weekend_date", { ascending: true }),
         ]);
 
         if (ceilingRes.error) throw ceilingRes.error;
@@ -405,6 +420,7 @@ export default function TeamComparisonPage() {
         for (const row of (ceilingRes.data ?? []) as CeilingRow[]) {
           ceilingMap.set(String(row.event_id), row);
         }
+
         setCeilingsB(ceilingMap);
         setPerfB((perfRes.data ?? []) as PerfRow[]);
       } catch (e: any) {
@@ -469,14 +485,15 @@ export default function TeamComparisonPage() {
   }, [teamA, teamB, seriesA, seriesB]);
 
   const firstDate = chartData[0]?.weekend_date;
-const lastDate = chartData[chartData.length - 1]?.weekend_date;
+  const lastDate = chartData[chartData.length - 1]?.weekend_date;
 
-const seasonLabel =
-  firstDate && lastDate
-    ? `${new Date(firstDate).toLocaleString("default", { month: "short" })} → ${new Date(
-        lastDate
-      ).toLocaleString("default", { month: "short" })}`
-    : "";
+  const seasonLabel =
+    firstDate && lastDate
+      ? `${new Date(firstDate).toLocaleString("default", { month: "short" })} → ${new Date(
+          lastDate
+        ).toLocaleString("default", { month: "short" })}`
+      : "";
+
   const hitZeroBarData = useMemo(
     () => [
       {
@@ -505,7 +522,7 @@ const seasonLabel =
               Team Comparison Tool
             </h1>
             <p className="mt-2 max-w-3xl text-sm text-slate-400 md:text-base">
-              Compare two teams head-to-head.  Who's better?
+              Compare two teams head-to-head.  Who&apos;s better?
             </p>
           </div>
 
@@ -629,34 +646,34 @@ const seasonLabel =
           <section className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4 shadow-lg shadow-black/20">
             <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
-  <h2 className="text-lg font-bold text-white">Season Trend</h2>
-  <div className="mt-1 text-sm font-medium text-slate-300">{seasonLabel}</div>
-  <p className="mt-1 text-sm text-slate-400">
-    Red vs Blue score trend, with optional ceiling overlays.
-  </p>
-</div>
+                <h2 className="text-lg font-bold text-white">Season Trend</h2>
+                <div className="mt-1 text-sm font-medium text-slate-300">{seasonLabel}</div>
+                <p className="mt-1 text-sm text-slate-400">
+                  Red vs Blue score trend, with optional ceiling overlays.
+                </p>
+              </div>
 
               <div className="flex flex-col gap-2 md:flex-row md:items-center">
-  <label className="inline-flex items-center gap-3 rounded-xl border border-slate-800 bg-slate-950 px-4 py-2 text-sm text-slate-200">
-    <input
-      type="checkbox"
-      checked={showScore}
-      onChange={(e) => setShowScore(e.target.checked)}
-      className="h-4 w-4 rounded border-slate-700 bg-slate-900 text-teal-400 focus:ring-teal-500"
-    />
-    Show Score
-  </label>
+                <label className="inline-flex items-center gap-3 rounded-xl border border-slate-800 bg-slate-950 px-4 py-2 text-sm text-slate-200">
+                  <input
+                    type="checkbox"
+                    checked={showScore}
+                    onChange={(e) => setShowScore(e.target.checked)}
+                    className="h-4 w-4 rounded border-slate-700 bg-slate-900 text-teal-400 focus:ring-teal-500"
+                  />
+                  Show Score
+                </label>
 
-  <label className="inline-flex items-center gap-3 rounded-xl border border-slate-800 bg-slate-950 px-4 py-2 text-sm text-slate-200">
-    <input
-      type="checkbox"
-      checked={showCeiling}
-      onChange={(e) => setShowCeiling(e.target.checked)}
-      className="h-4 w-4 rounded border-slate-700 bg-slate-900 text-teal-400 focus:ring-teal-500"
-    />
-    Show Ceiling Score
-  </label>
-</div>
+                <label className="inline-flex items-center gap-3 rounded-xl border border-slate-800 bg-slate-950 px-4 py-2 text-sm text-slate-200">
+                  <input
+                    type="checkbox"
+                    checked={showCeiling}
+                    onChange={(e) => setShowCeiling(e.target.checked)}
+                    className="h-4 w-4 rounded border-slate-700 bg-slate-900 text-teal-400 focus:ring-teal-500"
+                  />
+                  Show Ceiling Score
+                </label>
+              </div>
             </div>
 
             <div className="h-[420px]">
@@ -664,20 +681,20 @@ const seasonLabel =
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={chartData} margin={{ top: 16, right: 16, left: 0, bottom: 8 }}>
                     <CartesianGrid stroke="#1f2937" strokeDasharray="3 3" />
-                   <XAxis
-  dataKey="date_label"
-  tickFormatter={(value: string) => {
-    if (!chartData?.length) return "";
+                    <XAxis
+                      dataKey="date_label"
+                      tickFormatter={(value: string) => {
+                        if (!chartData?.length) return "";
 
-    if (value === chartData[0].date_label) return value;
-    if (value === chartData[chartData.length - 1].date_label) return value;
+                        if (value === chartData[0].date_label) return value;
+                        if (value === chartData[chartData.length - 1].date_label) return value;
 
-    return "";
-  }}
-  tick={{ fill: "#94a3b8", fontSize: 12 }}
-  axisLine={{ stroke: "#334155" }}
-  tickLine={false}
-/>
+                        return "";
+                      }}
+                      tick={{ fill: "#94a3b8", fontSize: 12 }}
+                      axisLine={{ stroke: "#334155" }}
+                      tickLine={false}
+                    />
                     <YAxis
                       domain={[85, 100]}
                       tick={{ fill: "#94a3b8", fontSize: 12 }}
@@ -685,26 +702,26 @@ const seasonLabel =
                       tickLine={{ stroke: "#334155" }}
                     />
                     <Tooltip
-  content={
-    <ComparisonTooltip
-      teamAName={teamAName}
-      teamBName={teamBName}
-    />
-  }
-/>
+                      content={
+                        <ComparisonTooltip
+                          teamAName={teamAName}
+                          teamBName={teamBName}
+                        />
+                      }
+                    />
                     <Legend />
 
                     {showScore ? (
-  <Line
-    type="monotone"
-    dataKey="teamA_score"
-    name={`${teamAName} Score`}
-    stroke={RED}
-    strokeWidth={4}
-    dot={{ r: 4 }}
-    connectNulls={true}
-  />
-) : null}
+                      <Line
+                        type="monotone"
+                        dataKey="teamA_score"
+                        name={`${teamAName} Score`}
+                        stroke={RED}
+                        strokeWidth={4}
+                        dot={{ r: 4 }}
+                        connectNulls={true}
+                      />
+                    ) : null}
                     {showCeiling ? (
                       <Line
                         type="monotone"
@@ -719,16 +736,16 @@ const seasonLabel =
                     ) : null}
 
                     {showScore ? (
-  <Line
-    type="monotone"
-    dataKey="teamB_score"
-    name={`${teamBName} Score`}
-    stroke={BLUE}
-    strokeWidth={4}
-    dot={{ r: 4 }}
-    connectNulls={true}
-  />
-) : null}
+                      <Line
+                        type="monotone"
+                        dataKey="teamB_score"
+                        name={`${teamBName} Score`}
+                        stroke={BLUE}
+                        strokeWidth={4}
+                        dot={{ r: 4 }}
+                        connectNulls={true}
+                      />
+                    ) : null}
                     {showCeiling ? (
                       <Line
                         type="monotone"
@@ -846,6 +863,7 @@ function StatCard({
     </div>
   );
 }
+
 function ComparisonTooltip({ active, payload, teamAName, teamBName }: any) {
   if (!active || !payload?.length) return null;
 
@@ -873,7 +891,6 @@ function ComparisonTooltip({ active, payload, teamAName, teamBName }: any) {
 
   return (
     <div className="rounded-xl border border-slate-800 bg-slate-950/95 p-3 text-xs text-slate-200 shadow-2xl">
-
       {row.teamA_event_name && (
         <div className="mb-1 font-semibold text-red-300">
           {teamAName} Event: {row.teamA_event_name}
@@ -888,16 +905,13 @@ function ComparisonTooltip({ active, payload, teamAName, teamBName }: any) {
 
       <div className="mb-3 text-[11px] text-slate-400">{row.date_label}</div>
 
-      {/* Team A */}
       {renderItem(byKey["teamA_score"])}
       {renderItem(byKey["teamA_ceiling"])}
 
       <div className="h-2" />
 
-      {/* Team B */}
       {renderItem(byKey["teamB_score"])}
       {renderItem(byKey["teamB_ceiling"])}
-
     </div>
   );
 }
