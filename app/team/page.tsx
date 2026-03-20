@@ -9,7 +9,6 @@ type TeamHit = {
   program_id: string | null;
   team: string;
   program: string;
-  team_display_name: string;
   event_count?: number | null;
   first_event_date?: string | null;
   last_event_date?: string | null;
@@ -46,14 +45,13 @@ setLoading(true);
 const { data, error } = await supabase
   .from("v_team_event_scores")
   .select(`
-  team_id,
-  program_id,
-  team,
-  program,
-  team_display_name,
-  event_id,
-  weekend_date
-`)
+    team_id,
+    program_id,
+    team,
+    program,
+    event_id,
+    weekend_date
+  `)
   .or(`team.ilike.%${search}%,program.ilike.%${search}%`)
   .order("team")
   .limit(20);
@@ -94,7 +92,7 @@ for (const r of data ?? []) {
       program_id: (r.program_id as string | null) ?? null,
       team: String(r.team ?? ""),
       program: String(r.program ?? ""),
-      team_display_name: `${String(r.team ?? "")} — ${String(r.program ?? "")}`,
+      team_display_name: `${String(r.program ?? "")} ${String(r.team ?? "")}`,
       event_count: weekendDate ? 1 : 0,
       first_event_date: weekendDate || null,
       last_event_date: weekendDate || null,
@@ -217,7 +215,7 @@ setHits(list);
                   textOverflow: "ellipsis",
                 }}
               >
-                {h.team_display_name}
+                {`${h.program} ${h.team}`}
               </div>
               <div style={{ opacity: 0.75, fontSize: 13 }}>
                 Program: {h.program}
