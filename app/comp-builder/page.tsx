@@ -2,6 +2,7 @@
 
 import React, { Fragment, useEffect, useMemo, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
+import PremiumGate from "@/app/components/PremiumGate";
 import {
   ResponsiveContainer,
   CartesianGrid,
@@ -137,6 +138,14 @@ function computeAverageCeiling(rows: TeamEventRow[]) {
 }
 
 export default function CompBuilderPage() {
+  return (
+    <PremiumGate nextPath="/comp-builder">
+      <CompBuilderInner />
+    </PremiumGate>
+  );
+}
+
+function CompBuilderInner() {
   const [gateEmail, setGateEmail] = useState("");
   const [unlocked, setUnlocked] = useState(false);
   const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
@@ -197,11 +206,11 @@ export default function CompBuilderPage() {
       const safeTerm = term.replace(/,/g, " ").trim();
 
       const { data, error } = await supabase
-  .from("v_team_event_scores")
-  .select("team_id, program, team")
-  .not("team", "is", null)
-  .or(`team.ilike.%${safeTerm}%,program.ilike.%${safeTerm}%`)
-  .limit(200);
+        .from("v_team_event_scores")
+        .select("team_id, program, team")
+        .not("team", "is", null)
+        .or(`team.ilike.%${safeTerm}%,program.ilike.%${safeTerm}%`)
+        .limit(200);
 
       if (error) {
         console.error("Search failed:", error);
@@ -241,28 +250,29 @@ export default function CompBuilderPage() {
 
       const q = safeTerm.toLowerCase();
 
-results.sort((a, b) => {
-  const aName = a.name.toLowerCase();
-  const bName = b.name.toLowerCase();
-  const aProgram = a.program.toLowerCase();
-  const bProgram = b.program.toLowerCase();
-  const aTeam = a.team.toLowerCase();
-  const bTeam = b.team.toLowerCase();
+      results.sort((a, b) => {
+        const aName = a.name.toLowerCase();
+        const bName = b.name.toLowerCase();
+        const aProgram = a.program.toLowerCase();
+        const bProgram = b.program.toLowerCase();
+        const aTeam = a.team.toLowerCase();
+        const bTeam = b.team.toLowerCase();
 
-  const aStarts =
-    aName.startsWith(q) || aProgram.startsWith(q) || aTeam.startsWith(q) ? 1 : 0;
-  const bStarts =
-    bName.startsWith(q) || bProgram.startsWith(q) || bTeam.startsWith(q) ? 1 : 0;
+        const aStarts =
+          aName.startsWith(q) || aProgram.startsWith(q) || aTeam.startsWith(q) ? 1 : 0;
+        const bStarts =
+          bName.startsWith(q) || bProgram.startsWith(q) || bTeam.startsWith(q) ? 1 : 0;
 
-  if (aStarts !== bStarts) return bStarts - aStarts;
+        if (aStarts !== bStarts) return bStarts - aStarts;
 
-  const aProgramMatch = aProgram.includes(q) ? 1 : 0;
-  const bProgramMatch = bProgram.includes(q) ? 1 : 0;
+        const aProgramMatch = aProgram.includes(q) ? 1 : 0;
+        const bProgramMatch = bProgram.includes(q) ? 1 : 0;
 
-  if (aProgramMatch !== bProgramMatch) return bProgramMatch - aProgramMatch;
+        if (aProgramMatch !== bProgramMatch) return bProgramMatch - aProgramMatch;
 
-  return a.name.localeCompare(b.name);
-});
+        return a.name.localeCompare(b.name);
+      });
+
       setSearchResults(results);
       setSearchLoading(false);
     };
@@ -316,11 +326,7 @@ results.sort((a, b) => {
       }
 
       const eventIds = Array.from(
-        new Set(
-          eventRows
-            .map((r) => String(r.event_id ?? ""))
-            .filter(Boolean)
-        )
+        new Set(eventRows.map((r) => String(r.event_id ?? "")).filter(Boolean))
       );
 
       let ceilingData: any[] = [];
@@ -450,8 +456,6 @@ results.sort((a, b) => {
     setTeamPerformanceRows({});
   };
 
-
-
   const primaryMetrics = useMemo(() => {
     if (!primaryTeamId) return null;
 
@@ -497,14 +501,14 @@ results.sort((a, b) => {
 
         const ceiling = computeAverageCeiling(eventRows) ?? 0;
 
-return {
-  teamId: team.id,
-  name: team.name.length > 28 ? `${team.name.slice(0, 28)}…` : team.name,
-  fullName: team.name,
-  avgScore,
-  ceiling,
-  isPrimary: team.id === primaryTeamId,
-};
+        return {
+          teamId: team.id,
+          name: team.name.length > 28 ? `${team.name.slice(0, 28)}…` : team.name,
+          fullName: team.name,
+          avgScore,
+          ceiling,
+          isPrimary: team.id === primaryTeamId,
+        };
       })
       .filter((row) => row.avgScore > 0 || row.ceiling > 0);
 
@@ -517,32 +521,32 @@ return {
     });
   }, [roster, teamRows, showBarScore, showBarCeiling, primaryTeamId]);
 
-const barDomain = useMemo(() => {
-  const values: number[] = [];
+  const barDomain = useMemo(() => {
+    const values: number[] = [];
 
-  for (const row of barData) {
-    if (showBarScore && Number.isFinite(row.avgScore)) {
-      values.push(row.avgScore);
+    for (const row of barData) {
+      if (showBarScore && Number.isFinite(row.avgScore)) {
+        values.push(row.avgScore);
+      }
+      if (showBarCeiling && Number.isFinite(row.ceiling)) {
+        values.push(row.ceiling);
+      }
     }
-    if (showBarCeiling && Number.isFinite(row.ceiling)) {
-      values.push(row.ceiling);
-    }
-  }
 
-  if (!values.length) return [0, 100] as [number, number];
+    if (!values.length) return [0, 100] as [number, number];
 
-  const min = Math.min(...values);
-  const max = Math.max(...values);
+    const min = Math.min(...values);
+    const max = Math.max(...values);
 
-  const paddedMin = Math.floor((min - 0.5) * 1000) / 1000;
-  const paddedMax = Math.ceil((max + 0.5) * 1000) / 1000;
+    const paddedMin = Math.floor((min - 0.5) * 1000) / 1000;
+    const paddedMax = Math.ceil((max + 0.5) * 1000) / 1000;
 
-  return [paddedMin, paddedMax] as [number, number];
-}, [barData, showBarScore, showBarCeiling]);
+    return [paddedMin, paddedMax] as [number, number];
+  }, [barData, showBarScore, showBarCeiling]);
 
   function addTeam(team: TeamOption) {
     if (roster.some((t) => t.id === team.id)) return;
-    if (roster.length >= 6) return;
+    if (roster.length >= 12) return;
 
     const isFirstTeam = roster.length === 0;
 
@@ -659,20 +663,19 @@ const barDomain = useMemo(() => {
     });
   }, [roster, teamRows, teamPerformanceRows, colorMap, tableSortKey, tableSortDir]);
 
-  
   const primaryTeam = roster.find((t) => t.id === primaryTeamId);
 
   function splitProgramTeam(label: string) {
-  const parts = label.split(" - ");
-  if (parts.length <= 1) {
-    return { program: label, team: "" };
-  }
+    const parts = label.split(" - ");
+    if (parts.length <= 1) {
+      return { program: label, team: "" };
+    }
 
-  return {
-    program: parts.slice(0, -1).join(" - "),
-    team: parts[parts.length - 1],
-  };
-}
+    return {
+      program: parts.slice(0, -1).join(" - "),
+      team: parts[parts.length - 1],
+    };
+  }
 
   let primaryBannerText = "Add your Focus Team";
 
@@ -756,13 +759,13 @@ const barDomain = useMemo(() => {
         <div className="flex items-center justify-between gap-3 mb-6">
           <div>
             <h1 className="text-3xl font-semibold tracking-tight">Comp Builder</h1>
-<h1 className="text-2xl font-bold">
-  See how teams stack up before they compete
-</h1>
+            <h1 className="text-2xl font-bold">
+              See how teams stack up before they compete
+            </h1>
 
-<p className="text-slate-300 mt-2">
-  Add up to 6 teams and instantly compare ceiling, consistency, and scores.
-</p>
+            <p className="text-slate-300 mt-2">
+              Add up to 6 teams and instantly compare ceiling, consistency, and scores.
+            </p>
           </div>
 
           <div className="flex-1 flex justify-center">
@@ -772,13 +775,13 @@ const barDomain = useMemo(() => {
           </div>
 
           {/*
-<button
-  onClick={reset}
-  className="rounded-md border border-white/15 hover:bg-white/5 px-3 py-2 text-sm"
->
-  Reset Gate
-</button>
-*/}
+          <button
+            onClick={reset}
+            className="rounded-md border border-white/15 hover:bg-white/5 px-3 py-2 text-sm"
+          >
+            Reset Gate
+          </button>
+          */}
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
@@ -842,13 +845,14 @@ const barDomain = useMemo(() => {
               placeholder="Build your roster..."
               className="mt-4 w-full rounded-md bg-black/30 border border-white/10 px-3 py-2 text-sm outline-none focus:border-teal-400/50"
             />
+
             <div className="mt-4 space-y-2 max-h-[280px] overflow-auto pr-1">
               {searchTerm.trim().length < 2 ? (
-<div className="mt-3 text-sm text-slate-400 space-y-1">
-  <div>1. Search and add teams</div>
-  <div>2. Set your focus team</div>
-  <div>3. See how they stack up instantly</div>
-</div>
+                <div className="mt-3 text-sm text-slate-400 space-y-1">
+                  <div>1. Search and add teams</div>
+                  <div>2. Set your focus team</div>
+                  <div>3. See how they stack up instantly</div>
+                </div>
               ) : searchLoading ? (
                 <div className="text-sm text-white/40">Searching teams...</div>
               ) : searchResults.length === 0 ? (
@@ -865,7 +869,7 @@ const barDomain = useMemo(() => {
                       <div className="text-sm">{team.name}</div>
                       <button
                         onClick={() => addTeam(team)}
-                        disabled={alreadyAdded || roster.length >= 6}
+                        disabled={alreadyAdded || roster.length >= 12}
                         className="mt-2 rounded-md border border-white/10 px-2 py-1 text-xs hover:bg-white/5 disabled:opacity-40"
                       >
                         {alreadyAdded ? "Already in roster" : "Add to roster"}
@@ -879,11 +883,12 @@ const barDomain = useMemo(() => {
             <div className="mt-6 border-t border-white/10 pt-4">
               <div className="flex items-center justify-between">
                 <h3 className="font-medium">Roster</h3>
-                <span className="text-xs text-white/50">{roster.length} / 6</span>
+                <span className="text-xs text-white/50">{roster.length} / 12</span>
               </div>
+
               <div className="text-[11px] text-white/40 mt-1">
-  Beta: up to 6 teams
-</div>
+                Up to 12 teams!
+              </div>
 
               <div className="mt-3 space-y-2">
                 {roster.map((team) => {
@@ -972,9 +977,9 @@ const barDomain = useMemo(() => {
               </div>
 
               <div
-  className="mt-6 rounded-xl border border-white/10 bg-black/10 p-4"
-  style={{ height: `${Math.max(360, barData.length * 68)}px` }}
->
+                className="mt-6 rounded-xl border border-white/10 bg-black/10 p-4"
+                style={{ height: `${Math.max(360, barData.length * 68)}px` }}
+              >
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart
                     data={barData}
@@ -991,121 +996,121 @@ const barDomain = useMemo(() => {
                       tickLine={{ stroke: "rgba(255,255,255,0.12)" }}
                     />
                     <YAxis
-  type="category"
-  dataKey="fullName"
-  width={240}
-  tick={(props: any) => {
-    const { x, y, payload } = props;
-    const fullName = String(payload?.value ?? "");
-    const { program, team } = splitProgramTeam(fullName);
+                      type="category"
+                      dataKey="fullName"
+                      width={240}
+                      tick={(props: any) => {
+                        const { x, y, payload } = props;
+                        const fullName = String(payload?.value ?? "");
+                        const { program, team } = splitProgramTeam(fullName);
 
-    return (
-      <g transform={`translate(${x},${y})`}>
-        <text
-          x={-10}
-          y={-2}
-          textAnchor="end"
-          fill="rgba(255,255,255,0.72)"
-          fontSize="11"
-        >
-          {program}
-        </text>
-        {team && (
-          <text
-            x={-10}
-            y={12}
-            textAnchor="end"
-            fill="rgba(255,255,255,0.92)"
-            fontSize="12"
-            fontWeight="600"
-          >
-            {team}
-          </text>
-        )}
-      </g>
-    );
-  }}
-  axisLine={{ stroke: "rgba(255,255,255,0.12)" }}
-  tickLine={{ stroke: "rgba(255,255,255,0.12)" }}
-/>
-  <Tooltip
-  formatter={(value, name) => [
-    typeof value === "number" ? value.toFixed(3) : String(value ?? "--"),
-    name === "avgScore" ? "Average Event Score" : "Average Ceiling Score",
-  ]}
-  labelFormatter={(label) => label}
-  contentStyle={{
-    backgroundColor: "#0b1220",
-    border: "1px solid rgba(255,255,255,0.12)",
-    borderRadius: 12,
-    color: "#e5e7eb",
-  }}
-  labelStyle={{
-    color: "#ffffff",
-    fontWeight: 600,
-  }}
-  itemStyle={{
-    color: "#cbd5f5",
-  }}
-/>
+                        return (
+                          <g transform={`translate(${x},${y})`}>
+                            <text
+                              x={-10}
+                              y={-2}
+                              textAnchor="end"
+                              fill="rgba(255,255,255,0.72)"
+                              fontSize="11"
+                            >
+                              {program}
+                            </text>
+                            {team && (
+                              <text
+                                x={-10}
+                                y={12}
+                                textAnchor="end"
+                                fill="rgba(255,255,255,0.92)"
+                                fontSize="12"
+                                fontWeight="600"
+                              >
+                                {team}
+                              </text>
+                            )}
+                          </g>
+                        );
+                      }}
+                      axisLine={{ stroke: "rgba(255,255,255,0.12)" }}
+                      tickLine={{ stroke: "rgba(255,255,255,0.12)" }}
+                    />
+                    <Tooltip
+                      formatter={(value, name) => [
+                        typeof value === "number" ? value.toFixed(3) : String(value ?? "--"),
+                        name === "avgScore" ? "Average Event Score" : "Average Ceiling Score",
+                      ]}
+                      labelFormatter={(label) => label}
+                      contentStyle={{
+                        backgroundColor: "#0b1220",
+                        border: "1px solid rgba(255,255,255,0.12)",
+                        borderRadius: 12,
+                        color: "#e5e7eb",
+                      }}
+                      labelStyle={{
+                        color: "#ffffff",
+                        fontWeight: 600,
+                      }}
+                      itemStyle={{
+                        color: "#cbd5f5",
+                      }}
+                    />
 
                     {showBarScore && (
-  <Bar
-    dataKey="avgScore"
-    shape={(props: any) => {
-      const { x, y, width, height, payload } = props;
-      const isPrimary = payload?.isPrimary;
+                      <Bar
+                        dataKey="avgScore"
+                        shape={(props: any) => {
+                          const { x, y, width, height, payload } = props;
+                          const isPrimary = payload?.isPrimary;
 
-      return (
-        <rect
-          x={x}
-          y={isPrimary ? y - 2 : y}
-          width={width}
-          height={isPrimary ? height + 4 : height}
-          rx={6}
-          ry={6}
-          fill={isPrimary ? "#67e8f9" : "#22d3ee"}
-          stroke={isPrimary ? "#ffffff" : "none"}
-          strokeWidth={isPrimary ? 3 : 0}
-          style={{
-            filter: isPrimary
-              ? "drop-shadow(0 0 12px rgba(34,211,238,0.9))"
-              : "none",
-          }}
-        />
-      );
-    }}
-  />
-)}
+                          return (
+                            <rect
+                              x={x}
+                              y={isPrimary ? y - 2 : y}
+                              width={width}
+                              height={isPrimary ? height + 4 : height}
+                              rx={6}
+                              ry={6}
+                              fill={isPrimary ? "#67e8f9" : "#22d3ee"}
+                              stroke={isPrimary ? "#ffffff" : "none"}
+                              strokeWidth={isPrimary ? 3 : 0}
+                              style={{
+                                filter: isPrimary
+                                  ? "drop-shadow(0 0 12px rgba(34,211,238,0.9))"
+                                  : "none",
+                              }}
+                            />
+                          );
+                        }}
+                      />
+                    )}
 
                     {showBarCeiling && (
-  <Bar
-    dataKey="ceiling"
-    shape={(props: any) => {
-      const { x, y, width, height, payload } = props;
-      const isPrimary = payload?.isPrimary;
+                      <Bar
+                        dataKey="ceiling"
+                        shape={(props: any) => {
+                          const { x, y, width, height, payload } = props;
+                          const isPrimary = payload?.isPrimary;
 
-      return (
-        <rect
-          x={x}
-          y={isPrimary ? y - 2 : y}
-          width={width}
-          height={isPrimary ? height + 4 : height}
-          rx={6}
-          ry={6}
-          fill={isPrimary ? "#f9a8d4" : "#f472b6"}
-          stroke={isPrimary ? "#ffffff" : "none"}
-          strokeWidth={isPrimary ? 3 : 0}
-          style={{
-            filter: isPrimary
-              ? "drop-shadow(0 0 12px rgba(244,114,182,0.9))"
-              : "none",
-          }}
-        />
-      );
-    }}
-  />
-)}
+                          return (
+                            <rect
+                              x={x}
+                              y={isPrimary ? y - 2 : y}
+                              width={width}
+                              height={isPrimary ? height + 4 : height}
+                              rx={6}
+                              ry={6}
+                              fill={isPrimary ? "#f9a8d4" : "#f472b6"}
+                              stroke={isPrimary ? "#ffffff" : "none"}
+                              strokeWidth={isPrimary ? 3 : 0}
+                              style={{
+                                filter: isPrimary
+                                  ? "drop-shadow(0 0 12px rgba(244,114,182,0.9))"
+                                  : "none",
+                              }}
+                            />
+                          );
+                        }}
+                      />
+                    )}
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -1174,13 +1179,13 @@ const barDomain = useMemo(() => {
                       return (
                         <Fragment key={row.teamId}>
                           <tr
-  className={`border-t border-white/10 cursor-pointer ${
-    row.teamId === primaryTeamId
-      ? "bg-cyan-500/10 hover:bg-cyan-500/20"
-      : "hover:bg-white/5"
-  }`}
-  onClick={() => toggleExpanded(row.teamId)}
->
+                            className={`border-t border-white/10 cursor-pointer ${
+                              row.teamId === primaryTeamId
+                                ? "bg-cyan-500/10 hover:bg-cyan-500/20"
+                                : "hover:bg-white/5"
+                            }`}
+                            onClick={() => toggleExpanded(row.teamId)}
+                          >
                             <td className="px-4 py-3">
                               <div className="flex items-center gap-2">
                                 <div

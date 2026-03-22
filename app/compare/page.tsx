@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
+import PremiumGate from "@/app/components/PremiumGate";
 import {
   ResponsiveContainer,
   LineChart,
@@ -73,11 +74,9 @@ type TeamSeriesPoint = {
 };
 
 const RED = "#ef4444";
-const RED_FAINT = "rgba(239, 68, 68, 0.35)";
 const BLUE = "#3b82f6";
-const BLUE_FAINT = "rgba(59, 130, 246, 0.35)";
-const CEILING_A = "#facc15"; // yellow
-const CEILING_B = "#a855f7"; // purple
+const CEILING_A = "#facc15";
+const CEILING_B = "#a855f7";
 
 function toNum(v: unknown): number | null {
   if (v === null || v === undefined || v === "") return null;
@@ -190,7 +189,15 @@ function mergeSeries(
   });
 }
 
-export default function TeamComparisonPage() {
+export default function ComparePage() {
+  return (
+    <PremiumGate nextPath="/compare">
+      <TeamComparisonInner />
+    </PremiumGate>
+  );
+}
+
+function TeamComparisonInner() {
   const [searchA, setSearchA] = useState("");
   const [searchB, setSearchB] = useState("");
   const [optionsA, setOptionsA] = useState<TeamOption[]>([]);
@@ -210,6 +217,7 @@ export default function TeamComparisonPage() {
   const [searchingA, setSearchingA] = useState(false);
   const [searchingB, setSearchingB] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
   const teamAName = teamA ? [teamA.program, teamA.team].filter(Boolean).join(" • ") : "Team A";
   const teamBName = teamB ? [teamB.program, teamB.team].filter(Boolean).join(" • ") : "Team B";
 
@@ -224,6 +232,7 @@ export default function TeamComparisonPage() {
     const timer = setTimeout(async () => {
       try {
         setSearchingA(true);
+
         const { data, error } = await supabase
           .from("v_team_event_scores")
           .select("team_id, program, team, division")
@@ -266,6 +275,7 @@ export default function TeamComparisonPage() {
     const timer = setTimeout(async () => {
       try {
         setSearchingB(true);
+
         const { data, error } = await supabase
           .from("v_team_event_scores")
           .select("team_id, program, team, division")
@@ -306,6 +316,7 @@ export default function TeamComparisonPage() {
     }
 
     let cancelled = false;
+
     (async () => {
       try {
         setLoadingA(true);
@@ -335,9 +346,7 @@ export default function TeamComparisonPage() {
             : Promise.resolve({ data: [], error: null } as any),
           supabase
             .from("v_results_normalized")
-            .select(
-              "team_id, event_id, weekend_date, round, round_raw, round_phase, deductions"
-            )
+            .select("team_id, event_id, weekend_date, round, round_raw, round_phase, deductions")
             .eq("team_id", teamA.team_id)
             .in("round_phase", ["Prelims", "Finals"])
             .order("weekend_date", { ascending: true }),
@@ -375,6 +384,7 @@ export default function TeamComparisonPage() {
     }
 
     let cancelled = false;
+
     (async () => {
       try {
         setLoadingB(true);
@@ -404,9 +414,7 @@ export default function TeamComparisonPage() {
             : Promise.resolve({ data: [], error: null } as any),
           supabase
             .from("v_results_normalized")
-            .select(
-              "team_id, event_id, weekend_date, round, round_raw, round_phase, deductions"
-            )
+            .select("team_id, event_id, weekend_date, round, round_raw, round_phase, deductions")
             .eq("team_id", teamB.team_id)
             .in("round_phase", ["Prelims", "Finals"])
             .order("weekend_date", { ascending: true }),
@@ -522,7 +530,7 @@ export default function TeamComparisonPage() {
               Team Comparison Tool
             </h1>
             <p className="mt-2 max-w-3xl text-sm text-slate-400 md:text-base">
-              Compare two teams head-to-head.  Who&apos;s better?
+              Compare two teams head-to-head. Who&apos;s better?
             </p>
           </div>
 
@@ -557,7 +565,9 @@ export default function TeamComparisonPage() {
                     }}
                     className="block w-full border-b border-slate-800 px-4 py-3 text-left text-sm transition hover:bg-slate-800/70 last:border-b-0"
                   >
-                    <div className="font-semibold text-white">{[opt.program, opt.team].filter(Boolean).join(" • ")}</div>
+                    <div className="font-semibold text-white">
+                      {[opt.program, opt.team].filter(Boolean).join(" • ")}
+                    </div>
                     <div className="mt-1 text-xs text-slate-400">{opt.division ?? "—"}</div>
                   </button>
                 ))
@@ -592,7 +602,9 @@ export default function TeamComparisonPage() {
                     }}
                     className="block w-full border-b border-slate-800 px-4 py-3 text-left text-sm transition hover:bg-slate-800/70 last:border-b-0"
                   >
-                    <div className="font-semibold text-white">{[opt.program, opt.team].filter(Boolean).join(" • ")}</div>
+                    <div className="font-semibold text-white">
+                      {[opt.program, opt.team].filter(Boolean).join(" • ")}
+                    </div>
                     <div className="mt-1 text-xs text-slate-400">{opt.division ?? "—"}</div>
                   </button>
                 ))
@@ -722,6 +734,7 @@ export default function TeamComparisonPage() {
                         connectNulls={true}
                       />
                     ) : null}
+
                     {showCeiling ? (
                       <Line
                         type="monotone"
@@ -746,6 +759,7 @@ export default function TeamComparisonPage() {
                         connectNulls={true}
                       />
                     ) : null}
+
                     {showCeiling ? (
                       <Line
                         type="monotone"
@@ -771,7 +785,9 @@ export default function TeamComparisonPage() {
           <section className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4 shadow-lg shadow-black/20">
             <div className="mb-4">
               <h2 className="text-lg font-bold text-white">Hit Zero Rate</h2>
-              <p className="mt-1 text-sm text-slate-400">Performance-level zero-deduction rate, side-by-side.</p>
+              <p className="mt-1 text-sm text-slate-400">
+                Performance-level zero-deduction rate, side-by-side.
+              </p>
             </div>
 
             <div className="mb-4 grid grid-cols-2 gap-3">

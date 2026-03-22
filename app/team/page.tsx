@@ -160,14 +160,10 @@ setHits(list);
         Team Search
       </h1>
       <p style={{ marginTop: 0, opacity: 0.75 }}>
-        <b>Where does your team Rank Nationally?</b>
+        <b>Track your team!  ANY Team!</b>
       </p>
       <p className="mt-1 text-xs text-slate-400">
         Scores sourced from Varsity competition results.
-      </p>
-
-      <p className="mt-1 text-xs text-slate-400">
-        Updated: {lastUpdated}
       </p>
 
       <div style={{ display: "grid", gap: 8, maxWidth: 720, marginTop: 14 }}>

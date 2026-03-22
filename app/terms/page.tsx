@@ -37,7 +37,22 @@ export default function TermsPage() {
               <li>No partial refunds will be issued unless required by law</li>
             </ul>
           </section>
-
+<section>
+  <h2 className="text-lg font-semibold text-white">Refund Policy</h2>
+  <p className="mt-2">
+    We want you to feel confident trying Elite Cheer Stats Premium.
+  </p>
+  <p className="mt-2">
+    If your team is not included in our database, or the platform does not meet your expectations,
+    you may request a full refund within 24 hours of your initial purchase.
+  </p>
+  <p className="mt-2">
+    Simply email contactus@elitecheerstats.com with your account email and we’ll take care of it.
+  </p>
+  <p className="mt-2">
+    After 24 hours, all payments are non-refundable. You can cancel anytime and keep access through the end of your billing period.
+  </p>
+</section>
           <section>
             <h2 className="text-lg font-semibold text-white">Intellectual Property</h2>
             <p className="mt-2">

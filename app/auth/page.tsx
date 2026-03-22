@@ -1,70 +1,59 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
-export default function HomePage() {
-  const [loading, setLoading] = useState(true);
-  const [sessionEmail, setSessionEmail] = useState<string | null>(null);
-  const [isPremium, setIsPremium] = useState(false);
+export default function AuthPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
 
+  const nextPath = useMemo(() => {
+    const next = searchParams.get("next");
+    if (!next || !next.startsWith("/")) return "/";
+    return next;
+  }, [searchParams]);
+
+  const [checkingSession, setCheckingSession] = useState(true);
+  const [authMode, setAuthMode] = useState<"signup" | "login">("signup");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
-  const [authMode, setAuthMode] = useState<"signup" | "login">("signup");
-  const [authMessage, setAuthMessage] = useState<string | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [authMessage, setAuthMessage] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
 
-    async function load() {
-      setLoading(true);
-
+    async function checkSession() {
       const {
         data: { session },
       } = await supabase.auth.getSession();
 
       if (!mounted) return;
 
-      if (!session?.user) {
-        setSessionEmail(null);
-        setIsPremium(false);
-        setLoading(false);
+      if (session?.user) {
+        router.replace(nextPath);
         return;
       }
 
-      setSessionEmail(session.user.email ?? null);
-
-      const { data } = await supabase
-        .from("profiles")
-        .select("is_premium")
-        .eq("id", session.user.id)
-        .maybeSingle();
-
-      if (!mounted) return;
-
-      setIsPremium(!!data?.is_premium);
-      setLoading(false);
+      setCheckingSession(false);
     }
 
-    load();
+    checkSession();
 
-    const { data: listener } = supabase.auth.onAuthStateChange(() => {
-      load();
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        router.replace(nextPath);
+      }
     });
 
     return () => {
       mounted = false;
       listener.subscription.unsubscribe();
     };
-  }, []);
-
-  async function handleLogout() {
-    await supabase.auth.signOut();
-    window.location.reload();
-  }
+  }, [router, nextPath]);
 
   async function handleAuthSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -115,7 +104,7 @@ export default function HomePage() {
         }
 
         if (data.session?.user) {
-          window.location.reload();
+          router.replace(nextPath);
           return;
         }
 
@@ -131,122 +120,92 @@ export default function HomePage() {
       });
 
       if (error) {
-        setAuthError("Invalid email or password.");
+        setAuthError(error.message);
         setAuthLoading(false);
         return;
       }
 
-      window.location.reload();
+      router.replace(nextPath);
     } catch {
       setAuthError("Something went wrong. Please try again.");
       setAuthLoading(false);
     }
   }
 
+  if (checkingSession) {
+    return (
+      <main className="min-h-screen bg-[#020b2d] text-white">
+        <section className="mx-auto max-w-6xl px-6 py-16">
+          <div className="rounded-2xl border border-white/10 bg-[#03123b] p-8">
+            <h1 className="text-3xl font-bold">Loading…</h1>
+            <p className="mt-3 text-white/75">Checking your account session.</p>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <main className="min-h-screen bg-[#020b2d] text-white">
-      <section className="mx-auto max-w-6xl px-6 py-10">
+      <section className="mx-auto max-w-6xl px-6 py-12">
         <div className="mb-10">
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-white">
+          <Link href="/" className="inline-flex items-center text-2xl font-extrabold">
+            <span className="text-white">Elite Cheer </span>
+            <span className="text-[#18d3c5]">Stats</span>
+          </Link>
+
+          <p className="mt-6 text-xs font-bold uppercase tracking-[0.18em] text-white">
             Competitive Cheerleading Analytics
           </p>
 
           <h1 className="mt-4 text-4xl font-extrabold sm:text-5xl">
-            Elite Cheer Stats
+            {authMode === "signup" ? "Create your free account" : "Log in"}
           </h1>
 
-          <p className="mt-6 max-w-3xl text-lg text-white/85">
-            Rankings, team search, comparisons, and premium cheer analytics built
-            for parents, athletes, and gym decision-makers.
+          <p className="mt-4 max-w-3xl text-lg text-white/85">
+            {authMode === "signup"
+              ? "Create an account to unlock Premium analytics and continue to your destination."
+              : "Log in to continue to your account and Premium features."}
           </p>
 
-          <div className="mt-8 flex flex-wrap gap-4">
-
-<Link
-              href="/rankings"
-              className="rounded-xl border border-white/15 bg-white/5 px-6 py-3 text-base font-semibold hover:bg-white/10"
-            >
-              Rankings
-            </Link>
-
-            <Link
-              href="/team"
-              className="rounded-xl border border-white/15 bg-white/5 px-6 py-3 text-base font-semibold hover:bg-white/10"
-            >
-              Search a Team
-            </Link>
-            
-            <Link
-              href="/compare"
-              className="rounded-xl border border-white/15 bg-white/5 px-6 py-3 text-base font-semibold hover:bg-white/10"
-            >
-              Compare Teams
-            </Link>
-
-            
-            <Link
-              href="/comp-builder"
-              className="rounded-xl border border-[#00e5d4]/30 bg-[#00e5d4]/10 px-6 py-3 text-base font-semibold text-[#52f7ea] hover:bg-[#00e5d4]/15"
-            >
-              Comp Builder
-            </Link>
-          </div>
-
-          {!loading && sessionEmail && (
-            <div className="mt-5 flex flex-wrap items-center gap-3">
-              <span className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-sm">
-                {sessionEmail}
-              </span>
-              <span
-                className={`rounded-full px-3 py-1 text-sm font-semibold ${
-                  isPremium
-                    ? "border border-emerald-400/30 bg-emerald-500/10 text-emerald-300"
-                    : "border border-amber-400/30 bg-amber-500/10 text-amber-300"
-                }`}
-              >
-                {isPremium ? "Premium" : "Free"}
-              </span>
-              <button
-                onClick={handleLogout}
-                className="rounded-md border border-white/15 px-3 py-1.5 text-sm hover:bg-white/5"
-              >
-                Log out
-              </button>
-            </div>
+          {nextPath !== "/" && (
+            <p className="mt-3 text-sm text-[#52f7ea]">
+              After login, you’ll be sent to <span className="font-semibold">{nextPath}</span>.
+            </p>
           )}
         </div>
 
-        <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
-          <div className="grid gap-4 md:grid-cols-2">
-            <FeatureCard
-              title="Rankings"
-              desc="Free access to top team movement and leaderboard visibility."
-            />
-            <FeatureCard
-              title="Team Search"
-              desc="Quickly find teams, scores, trends, and event history."
-            />
-            <FeatureCard
-              title="Team Comparison"
-              desc="Compare teams side by side across scoring trends and outcomes."
-            />
-            <FeatureCard
-              title="Premium Analytics"
-              desc="Unlock ceiling score, hit-zero rate, deeper rankings, and more."
-            />
+        <div className="grid gap-8 lg:grid-cols-[1.15fr_480px] lg:items-start">
+          <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+            <div className="grid gap-4 md:grid-cols-2">
+              <FeatureCard
+                title="Rankings"
+                desc="Track team movement, leaderboard visibility, and season momentum."
+              />
+              <FeatureCard
+                title="Team Search"
+                desc="Quickly find teams, scores, trends, and event history."
+              />
+              <FeatureCard
+                title="Team Comparison"
+                desc="Compare teams side by side across scoring trends and outcomes."
+              />
+              <FeatureCard
+                title="Premium Analytics"
+                desc="Unlock ceiling score, hit-zero rate, deeper rankings, and more."
+              />
+            </div>
           </div>
-        </div>
 
-        {!loading && !sessionEmail && (
-          <div className="mt-8 rounded-2xl border border-white/10 bg-[#03123b] p-6">
+          <div className="rounded-2xl border border-white/10 bg-[#03123b] p-6 shadow-xl">
             <h2 className="text-2xl font-bold">
               {authMode === "signup" ? "Create your free account" : "Log in"}
             </h2>
 
             <p className="mt-2 text-white/75">
               {authMode === "signup"
-                ? "Create an account to unlock Premium analytics and save your access."
-                : "Log in to access your account and Premium features."}
+                ? "Create an account to save your access and unlock Premium features."
+                : "Log in with your email and password."}
             </p>
 
             <form onSubmit={handleAuthSubmit} className="mt-6 space-y-4">
@@ -287,8 +246,8 @@ export default function HomePage() {
                     ? "Creating Account..."
                     : "Logging In..."
                   : authMode === "signup"
-                  ? "Create Account"
-                  : "Log In"}
+                    ? "Create Account"
+                    : "Log In"}
               </button>
             </form>
 
@@ -325,8 +284,14 @@ export default function HomePage() {
                 </>
               )}
             </div>
+
+            <div className="mt-6 border-t border-white/10 pt-4 text-sm text-white/55">
+              <Link href="/" className="hover:text-white">
+                Back to home
+              </Link>
+            </div>
           </div>
-        )}
+        </div>
       </section>
     </main>
   );

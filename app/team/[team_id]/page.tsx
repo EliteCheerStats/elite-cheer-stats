@@ -13,6 +13,7 @@ import {
   ResponsiveContainer,
   CartesianGrid,
 } from "recharts";
+
 type Row = Record<string, any>;
 
 function pick(row: Row, keys: string[], fallback = "—") {
@@ -52,6 +53,44 @@ function computeHitRate(rows: Row[]) {
   };
 }
 
+function PremiumBlur({
+  children,
+  isPremium,
+  session,
+}: {
+  children: React.ReactNode;
+  isPremium: boolean;
+  session: any;
+}) {
+  if (isPremium) return <>{children}</>;
+
+  return (
+    <div className="relative">
+      <div className="pointer-events-none select-none blur-[6px] opacity-50">
+        {children}
+      </div>
+
+      <div className="absolute inset-0 flex items-center justify-center p-4">
+        {session?.user ? (
+          <Link
+            href="/upgrade"
+            className="rounded-xl border border-white/10 bg-[#131f3a]/95 px-4 py-3 text-sm font-semibold text-white shadow-xl backdrop-blur hover:bg-[#182447]"
+          >
+            Go Premium
+          </Link>
+        ) : (
+          <Link
+            href="/compare"
+            className="rounded-xl border border-white/10 bg-[#131f3a]/95 px-4 py-3 text-sm font-semibold text-white shadow-xl backdrop-blur hover:bg-[#182447]"
+          >
+            Sign In
+          </Link>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function TeamProfilePage() {
   const params = useParams<{ team_id: string }>();
   const teamId = params.team_id;
@@ -63,155 +102,216 @@ export default function TeamProfilePage() {
   const [performanceRows, setPerformanceRows] = useState<Row[]>([]);
   const [error, setError] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [showCeiling, setShowCeiling] = useState(true);
+  const [showCeiling, setShowCeiling] = useState(false);
 
+  const [premiumLoading, setPremiumLoading] = useState(true);
+  const [isPremium, setIsPremium] = useState(false);
+  const [session, setSession] = useState<any>(null);
 
- useEffect(() => {
-  let cancelled = false;
+  useEffect(() => {
+    let mounted = true;
 
-  async function load() {
-    try {
-      setLoading(true);
-      setError(null);
+    async function checkPremium() {
+      setPremiumLoading(true);
 
-      const currentTeamId = params.team_id;
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
-      const { data: eventData, error: eventError } = await supabase
-        .from("v_team_event_scores")
-        .select(`
-          team_id,
-          program_id,
-          program,
-          team,
-          event_id,
-          event_name,
-          weekend_date,
-          division,
-          size_effective,
-          event_score
-        `)
-        .eq("team_id", currentTeamId)
-        .order("weekend_date", { ascending: true });
+      if (!mounted) return;
 
-      if (eventError) {
+      setSession(session);
+
+      if (!session?.user) {
+        setIsPremium(false);
+        setPremiumLoading(false);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("is_premium")
+        .eq("id", session.user.id)
+        .maybeSingle();
+
+      if (!mounted) return;
+
+      if (error) {
+        console.error("team search premium check error:", error);
+        setIsPremium(false);
+        setPremiumLoading(false);
+        return;
+      }
+
+      setIsPremium(!!data?.is_premium);
+      setPremiumLoading(false);
+    }
+
+    checkPremium();
+
+    const { data: listener } = supabase.auth.onAuthStateChange(() => {
+      checkPremium();
+    });
+
+    return () => {
+      mounted = false;
+      listener.subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isPremium && showCeiling) {
+      setShowCeiling(false);
+    }
+  }, [isPremium, showCeiling]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      try {
+        setLoading(true);
+        setError(null);
+
+        const currentTeamId = params.team_id;
+
+        const { data: eventData, error: eventError } = await supabase
+          .from("v_team_event_scores")
+          .select(`
+            team_id,
+            program_id,
+            program,
+            team,
+            event_id,
+            event_name,
+            weekend_date,
+            division,
+            size_effective,
+            event_score
+          `)
+          .eq("team_id", currentTeamId)
+          .order("weekend_date", { ascending: true });
+
+        if (eventError) {
+          if (!cancelled) {
+            setError(eventError);
+            setRows([]);
+            setPerformanceRows([]);
+            setLoading(false);
+          }
+          return;
+        }
+
+        const eventRows = eventData ?? [];
+        const eventIds = Array.from(
+          new Set(
+            eventRows
+              .map((r: any) => String(r.event_id ?? ""))
+              .filter(Boolean)
+          )
+        );
+
+        let ceilingData: any[] = [];
+        let perfData: any[] = [];
+
+        if (eventIds.length > 0 && eventRows.length > 0) {
+          const selectedTeam = String(eventRows[0]?.team ?? "").trim().toLowerCase();
+
+          const { data: perfRes, error: perfError } = await supabase
+            .from("v_results_normalized")
+            .select(`
+              team,
+              program,
+              program_id,
+              team_id,
+              event_id,
+              weekend_date,
+              round,
+              round_raw,
+              round_phase,
+              raw_score,
+              deductions,
+              performance_score,
+              event_score
+            `)
+            .eq("team_id", currentTeamId)
+            .in("round_phase", ["Prelims", "Finals"])
+            .order("weekend_date", { ascending: true });
+
+          if (perfError) {
+            console.error("Performance query failed:", perfError);
+          } else {
+            perfData = (perfRes ?? []).filter(
+              (r: any) =>
+                String(r.team ?? "").trim().toLowerCase() === selectedTeam
+            );
+          }
+
+          if (currentTeamId && eventIds.length > 0) {
+            const { data: ceilingRes, error: ceilingError } = await supabase
+              .from("mv_team_event_ceiling_rebuilt")
+              .select(`
+                team_id,
+                event_id,
+                ceiling_score,
+                ceiling_delta,
+                ceiling_method,
+                ceiling_supported,
+                round_count
+              `)
+              .in("event_id", eventIds)
+              .eq("team_id", currentTeamId);
+
+            if (ceilingError) {
+              console.error("Ceiling query failed:", ceilingError);
+            } else {
+              ceilingData = ceilingRes ?? [];
+            }
+          }
+        }
+
+        const ceilings = new Map(
+          ceilingData.map((c: any) => [String(c.event_id), c])
+        );
+
+        const mergedRows = eventRows.map((r: any) => {
+          const c = ceilings.get(String(r.event_id));
+          return {
+            ...r,
+            ceiling_score_true: c?.ceiling_score ?? null,
+            ceiling_delta: c?.ceiling_delta ?? null,
+            ceiling_method: c?.ceiling_method ?? null,
+            ceiling_supported: c?.ceiling_supported ?? false,
+            round_count: c?.round_count ?? null,
+          };
+        });
+
         if (!cancelled) {
-          setError(eventError);
+          setRows(mergedRows);
+          setPerformanceRows(perfData);
+          setLoading(false);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(err);
           setRows([]);
           setPerformanceRows([]);
           setLoading(false);
         }
-        return;
-      }
-
-      const eventRows = eventData ?? [];
-      const eventIds = Array.from(
-        new Set(
-          eventRows
-            .map((r: any) => String(r.event_id ?? ""))
-            .filter(Boolean)
-        )
-      );
-
-            let ceilingData: any[] = [];
-      let perfData: any[] = [];
-
-      if (eventIds.length > 0 && eventRows.length > 0) {
-        const selectedTeam = String(eventRows[0]?.team ?? "").trim().toLowerCase();
-        const selectedProgramId = String(eventRows[0]?.program_id ?? "");
-
-        const { data: perfRes, error: perfError } = await supabase
-  .from("v_results_normalized")
-  .select(`
-    team,
-    program,
-    program_id,
-    team_id,
-    event_id,
-    weekend_date,
-    round,
-    round_raw,
-    round_phase,
-    raw_score,
-    deductions,
-    performance_score,
-    event_score
-  `)
-  .eq("team_id", currentTeamId)
-  .in("round_phase", ["Prelims", "Finals"])
-  .order("weekend_date", { ascending: true });
-
-        if (perfError) {
-          console.error("Performance query failed:", perfError);
-        } else {
-          perfData = (perfRes ?? []).filter(
-            (r: any) =>
-              String(r.team ?? "").trim().toLowerCase() === selectedTeam
-          );
-        }
-
-       if (currentTeamId && eventIds.length > 0) {
-    const { data: ceilingRes, error: ceilingError } = await supabase
-      .from("mv_team_event_ceiling_rebuilt")
-      .select(`
-        team_id,
-        event_id,
-        ceiling_score,
-        ceiling_delta,
-        ceiling_method,
-        ceiling_supported,
-        round_count
-      `)
-      .in("event_id", eventIds)
-      .eq("team_id", currentTeamId);
-
-    if (ceilingError) {
-      console.error("Ceiling query failed:", ceilingError);
-    } else {
-      ceilingData = ceilingRes ?? [];
-    }
-  }  
-}     
-          const ceilings = new Map(
-        ceilingData.map((c: any) => [String(c.event_id), c])
-      );
-
-      const mergedRows = eventRows.map((r: any) => {
-        const c = ceilings.get(String(r.event_id));
-        return {
-          ...r,
-          ceiling_score_true: c?.ceiling_score ?? null,
-          ceiling_delta: c?.ceiling_delta ?? null,
-          ceiling_method: c?.ceiling_method ?? null,
-          ceiling_supported: c?.ceiling_supported ?? false,
-          round_count: c?.round_count ?? null,
-        };
-      });
-
-      if (!cancelled) {
-        setRows(mergedRows);
-        setPerformanceRows(perfData);
-        setLoading(false);
-      }
-    } catch (err) {
-      if (!cancelled) {
-        setError(err);
-        setRows([]);
-        setPerformanceRows([]);
-        setLoading(false);
       }
     }
-  }
 
-  load();
+    load();
 
-  return () => {
-    cancelled = true;
-  };
-}, [params.team_id]);
+    return () => {
+      cancelled = true;
+    };
+  }, [params.team_id]);
+
   const filtered = useMemo(() => rows, [rows]);
   const hitRate = useMemo(() => computeHitRate(performanceRows), [performanceRows]);
 
-const trendData = useMemo(() => {
+  const trendData = useMemo(() => {
   const map = new Map<
     string,
     { score: number; ceiling: number | null; event: string }
@@ -220,7 +320,10 @@ const trendData = useMemo(() => {
   for (const r of filtered) {
     const wd = String(r.weekend_date ?? "");
     const score = toNum(r.event_score);
-    const ceiling = r.ceiling_supported ? toNum(r.ceiling_score_true) : null;
+    const ceiling =
+      !premiumLoading && isPremium && r.ceiling_supported
+        ? toNum(r.ceiling_score_true)
+        : null;
     const event = String(r.event_name ?? "");
 
     if (!wd || score === null) continue;
@@ -244,7 +347,7 @@ const trendData = useMemo(() => {
       event: value.event,
     }))
     .sort((a, b) => a.weekend.localeCompare(b.weekend));
-}, [filtered]);
+}, [filtered, isPremium, premiumLoading]);
 
 console.table(
   trendData.map((d) => ({
@@ -258,7 +361,6 @@ console.table(
         : null,
   }))
 );
-
 
 console.table(
   filtered.map((r) => ({
@@ -297,256 +399,286 @@ console.table(
   }, [filtered]);
 
   return (
-  <main className="space-y-6">
-    {/* Top nav / back */}
-    <div className="flex items-center justify-between gap-4">
-      <Link
-        href="/team"
-        className="text-sm font-semibold text-slate-200 hover:text-white"
-      >
-        ← Team Search
-      </Link>
+    <main className="space-y-6">
+      <div className="flex items-center justify-between gap-4">
+        <Link
+          href="/team"
+          className="text-sm font-semibold text-slate-200 hover:text-white"
+        >
+          ← Team Search
+        </Link>
 
-      <div className="text-xs text-slate-400">
-        {header.subtitle}
-      </div>
-    </div>
-
-    {/* Title + headline stats */}
-    <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/10 to-white/5 p-6">
-      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-        <div>
-          <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight">
-            {header.title}
-          </h1>
-          <p className="mt-2 text-slate-300">
-            Filter results by weekend and level. Your core numbers update instantly.
-          </p>
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-200">
-            Rows: <span className="font-semibold">{loading ? "…" : stats.rows}</span>
-          </span>
-          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-200">
-            Events: <span className="font-semibold">{loading ? "…" : stats.events}</span>
-          </span>
-
+        <div className="text-xs text-slate-400">
+          {header.subtitle}
         </div>
       </div>
 
-      {/* Stat cards */}
-      <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-          <div className="text-xs uppercase tracking-wide text-slate-400">Average</div>
-          <div className="mt-2 text-2xl font-extrabold text-teal-300">
-            {loading ? "—" : (stats.avg?.toFixed(3) ?? "—")}
-          </div>
-          <div className="mt-1 text-xs text-slate-400">Event score</div>
-        </div>
-
-        <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-          <div className="text-xs uppercase tracking-wide text-slate-400">Best</div>
-          <div className="mt-2 text-2xl font-extrabold text-teal-300">
-            {loading ? "—" : (stats.best?.toFixed(3) ?? "—")}
-          </div>
-          <div className="mt-1 text-xs text-slate-400">Peak event score</div>
-        </div>
-
-        <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-          <div className="text-xs uppercase tracking-wide text-slate-400">Hit Zero Rate</div>
-
-          <div className="mt-2 text-2xl font-extrabold text-teal-300">
-            {loading ? "—" : `${hitRate.pct.toFixed(1)}%`}
+      <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/10 to-white/5 p-6">
+        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <div>
+            <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight">
+              {header.title}
+            </h1>
+            <p className="mt-2 text-slate-300">
+              Filter results by weekend and level. Your core numbers update instantly.
+            </p>
           </div>
 
-          <div className="mt-1 text-xs text-slate-400">
-            {loading ? "—" : `${hitRate.hits}/${hitRate.total} performances hit zero`}
+          <div className="flex flex-wrap gap-2">
+            <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-200">
+              Rows: <span className="font-semibold">{loading ? "…" : stats.rows}</span>
+            </span>
+            <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-200">
+              Events: <span className="font-semibold">{loading ? "…" : stats.events}</span>
+            </span>
           </div>
         </div>
 
-        <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-          <div className="text-xs uppercase tracking-wide text-slate-400">Events</div>
-          <div className="mt-2 text-2xl font-extrabold text-slate-100">
-            {loading ? "—" : stats.events}
-          </div>
-          <div className="mt-1 text-xs text-slate-400">Unique events</div>
-        </div>
-
-       
-      </div>
-    </div>
-
-    {/* Filters */}
-   
-
-    {/* Error / empty states */}
-    {error && (
-      <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4">
-        <div className="font-semibold text-red-200">Error</div>
-        <pre className="mt-2 overflow-x-auto text-xs text-red-100">
-          {JSON.stringify(error, null, 2)}
-        </pre>
-      </div>
-    )}
-
-    {!loading && !error && filtered.length === 0 && (
-      <div className="rounded-2xl border border-white/10 bg-white/5 p-6 text-slate-200">
-        No rows for this team with current filters.
-      </div>
-    )}
-
-    {/* Results Table */}
-    {!loading && !error && filtered.length > 0 && (
-      <div className="rounded-2xl border border-white/10 bg-white/5">
-        <div className="flex items-center justify-between px-4 py-3">
-         <div>
-          <div className="text-sm font-semibold text-slate-100">Results</div>
-
-          <div className="text-xs text-slate-400">
-            Showing {filtered.length.toLocaleString()} rows
+        <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+            <div className="text-xs uppercase tracking-wide text-slate-400">Average</div>
+            <div className="mt-2 text-2xl font-extrabold text-teal-300">
+              {loading ? "—" : (stats.avg?.toFixed(3) ?? "—")}
+            </div>
+            <div className="mt-1 text-xs text-slate-400">Event score</div>
           </div>
 
-          <div className="mt-1 text-sm font-semibold text-slate-200">
-            {filtered[0]?.team} — {filtered[0]?.program}
+          <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+            <div className="text-xs uppercase tracking-wide text-slate-400">Best</div>
+            <div className="mt-2 text-2xl font-extrabold text-teal-300">
+              {loading ? "—" : (stats.best?.toFixed(3) ?? "—")}
+            </div>
+            <div className="mt-1 text-xs text-slate-400">Peak event score</div>
           </div>
-        </div>
-        </div>
 
-<div className="rounded-2xl border border-white/10 bg-white/5 p-5">
-  <div className="flex items-end justify-between gap-4">
-    <div>
-      <h2 className="text-lg font-bold text-slate-100">Score Trend</h2>
-      <p className="text-sm text-slate-400">Event score trend by weekend (based on current filters).</p>
-    </div>
-    <div className="text-xs text-slate-400">
-      Points: <span className="font-semibold text-slate-200">{trendData.length}</span>
-    </div>
+          <PremiumBlur isPremium={!premiumLoading && isPremium} session={session}>
+            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+  <div className="text-xs uppercase tracking-wide text-slate-400">
+    Hit Zero Rate {!isPremium && "🔒"}
   </div>
-  <div className="flex items-center gap-2 mt-4 mb-2">
-    <input
-      id="toggle-ceiling"
-      type="checkbox"
-      checked={showCeiling}
-      onChange={(e) => setShowCeiling(e.target.checked)}
-    />
-    <label htmlFor="toggle-ceiling" className="text-sm text-slate-300">
-      Show Ceiling Score
-    </label>
-</div>
-  <div className="mt-4 h-64">
-    {trendData.length < 2 ? (
-      <div className="flex h-full items-center justify-center text-sm text-slate-400">
-        Not enough data points yet for a trend line.
-      </div>
-    ) : (
-      <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={trendData} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
-          <CartesianGrid stroke="rgba(255,255,255,0.08)" />
-          <XAxis
-            dataKey="weekend"
-            tick={{ fill: "rgba(226,232,240,0.7)", fontSize: 12 }}
-            tickLine={false}
-            axisLine={{ stroke: "rgba(255,255,255,0.12)" }}
-          />
-          <YAxis
-            domain={["dataMin - 0.5", "dataMax + 0.5"]}
-            tick={{ fill: "rgba(226,232,240,0.7)", fontSize: 12 }}
-            tickLine={false}
-            axisLine={{ stroke: "rgba(255,255,255,0.12)" }}
-          />
-          <Tooltip
-  contentStyle={{
-    background: "rgba(2,6,23,0.95)",
-    border: "1px solid rgba(255,255,255,0.12)",
-    borderRadius: 12,
-    color: "white",
-  }}
-  labelStyle={{ color: "rgba(226,232,240,0.8)" }}
-  labelFormatter={(label, payload) => {
-    if (!payload || !payload.length) return label;
-    return payload[0].payload.event;
-  }}
-  formatter={(value, name) => [Number(value).toFixed(3), name]}
-/>
-          <Line
-            name="Actual Score"
-            type="monotone"
-            dataKey="event_score"
-            stroke="rgba(45,212,191,0.95)"
-            strokeWidth={3}
-            dot={{ r: 3 }}
-            activeDot={{ r: 5 }}
-          />
 
-          {showCeiling && trendData.some((d) => d.ceiling_score != null) && (
-  <Line
-    name="Ceiling Score"
-    type="monotone"
-    dataKey="ceiling_score"
-    stroke="#A855F7"
-    strokeDasharray="6 6"
-    strokeWidth={2}
-    dot={false}
-  />
-)}
-        </LineChart>
-      </ResponsiveContainer>
-    )}
+  <div className="mt-2 text-2xl font-extrabold text-teal-300">
+    {!premiumLoading && isPremium
+      ? loading
+        ? "—"
+        : `${hitRate.pct.toFixed(1)}%`
+      : "•••"}
+  </div>
+
+  <div className="mt-1 text-xs text-slate-400">
+    {!premiumLoading && isPremium
+      ? loading
+        ? "—"
+        : `${hitRate.hits}/${hitRate.total} performances hit zero`
+      : "Premium required"}
   </div>
 </div>
+          </PremiumBlur>
 
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead className="bg-white/5 text-slate-200">
-              <tr className="text-left">
-                <th className="px-3 py-3">Weekend</th>
-                <th className="px-3 py-3">Event</th>
-                <th className="px-3 py-3">Division</th>
-                <th className="px-3 py-3">Size</th>
-                <th className="px-3 py-3 text-right">Score</th>
-                <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-400">
-                  Ceiling
-                </th>
-              </tr>
-            </thead>
+          <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+            <div className="text-xs uppercase tracking-wide text-slate-400">Events</div>
+            <div className="mt-2 text-2xl font-extrabold text-slate-100">
+              {loading ? "—" : stats.events}
+            </div>
+            <div className="mt-1 text-xs text-slate-400">Unique events</div>
+          </div>
+        </div>
+      </div>
 
-            <tbody className="divide-y divide-white/10">
-              {filtered.map((r, idx) => (
-                <tr key={`${idx}`} className="text-slate-100 hover:bg-white/5">
-                  <td className="px-3 py-3 text-slate-300">
-                    {String(r.weekend_date ?? "—")}
-                  </td>
+      {error && (
+        <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4">
+          <div className="font-semibold text-red-200">Error</div>
+          <pre className="mt-2 overflow-x-auto text-xs text-red-100">
+            {JSON.stringify(error, null, 2)}
+          </pre>
+        </div>
+      )}
 
-                  <td className="px-3 py-3 font-semibold">
-                    {String(pick(r, ["event_name", "event_id"], "—"))}
-                  </td>
+      {!loading && !error && filtered.length === 0 && (
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-6 text-slate-200">
+          No rows for this team with current filters.
+        </div>
+      )}
 
-                  <td className="px-3 py-3 text-slate-200">
-                    {String(r.division ?? "—")}
-                  </td>
+      {!loading && !error && filtered.length > 0 && (
+        <div className="rounded-2xl border border-white/10 bg-white/5">
+          <div className="flex items-center justify-between px-4 py-3">
+            <div>
+              <div className="text-sm font-semibold text-slate-100">Results</div>
 
-                  <td className="px-3 py-3 font-semibold">
-                    {String(r.size_effective ?? "—")}
-                  </td>
+              <div className="text-xs text-slate-400">
+                Showing {filtered.length.toLocaleString()} rows
+              </div>
 
-                  <td className="px-3 py-2 text-right font-semibold">
-                    {Number(r.event_score).toFixed(3)}
-                  </td>
+              <div className="mt-1 text-sm font-semibold text-slate-200">
+                {filtered[0]?.team} — {filtered[0]?.program}
+              </div>
+            </div>
+          </div>
 
-                  <td className="px-3 py-2 text-right text-slate-400">
-                    {r.ceiling_supported
-                    ? Number(r.ceiling_score_true).toFixed(3)
-                    : "—"}
-                  </td>
-                 
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+            <div className="flex items-end justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-bold text-slate-100">Score Trend</h2>
+                <p className="text-sm text-slate-400">Event score trend by weekend (based on current filters).</p>
+              </div>
+              <div className="text-xs text-slate-400">
+                Points: <span className="font-semibold text-slate-200">{trendData.length}</span>
+              </div>
+            </div>
+
+            <div className="mt-4 mb-2 flex items-center gap-2">
+              <label
+                className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm ${
+                  !premiumLoading && isPremium
+                    ? "border-white/10 bg-white/5 text-white"
+                    : "cursor-not-allowed border-white/10 bg-white/[0.03] text-white/40"
+                }`}
+                title={!premiumLoading && isPremium ? "Toggle ceiling score" : "Premium required"}
+              >
+                <input
+                  id="toggle-ceiling"
+                  type="checkbox"
+                  checked={!premiumLoading && isPremium ? showCeiling : false}
+                  onChange={(e) => {
+                    if (!isPremium) return;
+                    setShowCeiling(e.target.checked);
+                  }}
+                  disabled={premiumLoading || !isPremium}
+                  className={`h-4 w-4 ${
+                    !premiumLoading && isPremium
+                      ? "cursor-pointer"
+                      : "cursor-not-allowed opacity-50"
+                  }`}
+                />
+                <span>Show Ceiling Score</span>
+                {(!premiumLoading && !isPremium) && (
+                  <span className="ml-1 rounded-full border border-white/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-white/50">
+                    Premium
+                  </span>
+                )}
+              </label>
+            </div>
+
+            <div className="mt-4 h-64">
+              {trendData.length < 2 ? (
+                <div className="flex h-full items-center justify-center text-sm text-slate-400">
+                  Not enough data points yet for a trend line.
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={trendData} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+                    <CartesianGrid stroke="rgba(255,255,255,0.08)" />
+                    <XAxis
+                      dataKey="weekend"
+                      tick={{ fill: "rgba(226,232,240,0.7)", fontSize: 12 }}
+                      tickLine={false}
+                      axisLine={{ stroke: "rgba(255,255,255,0.12)" }}
+                    />
+                    <YAxis
+                      domain={["dataMin - 0.5", "dataMax + 0.5"]}
+                      tick={{ fill: "rgba(226,232,240,0.7)", fontSize: 12 }}
+                      tickLine={false}
+                      axisLine={{ stroke: "rgba(255,255,255,0.12)" }}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        background: "rgba(2,6,23,0.95)",
+                        border: "1px solid rgba(255,255,255,0.12)",
+                        borderRadius: 12,
+                        color: "white",
+                      }}
+                      labelStyle={{ color: "rgba(226,232,240,0.8)" }}
+                      labelFormatter={(label, payload) => {
+                        if (!payload || !payload.length) return label;
+                        return payload[0].payload.event;
+                      }}
+                      formatter={(value, name) => [Number(value).toFixed(3), name]}
+                    />
+                    <Line
+                      name="Actual Score"
+                      type="monotone"
+                      dataKey="event_score"
+                      stroke="rgba(45,212,191,0.95)"
+                      strokeWidth={3}
+                      dot={{ r: 3 }}
+                      activeDot={{ r: 5 }}
+                    />
+
+                    {!premiumLoading &&
+                      isPremium &&
+                      showCeiling &&
+                      trendData.some((d) => d.ceiling_score != null) && (
+                        <Line
+                          name="Ceiling Score"
+                          type="monotone"
+                          dataKey="ceiling_score"
+                          stroke="#A855F7"
+                          strokeDasharray="6 6"
+                          strokeWidth={2}
+                          dot={false}
+                        />
+                      )}
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="bg-white/5 text-slate-200">
+                <tr className="text-left">
+                  <th className="px-3 py-3">Weekend</th>
+                  <th className="px-3 py-3">Event</th>
+                  <th className="px-3 py-3">Division</th>
+                  <th className="px-3 py-3">Size</th>
+                  <th className="px-3 py-3 text-right">Score</th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-400">
+                    {!premiumLoading && isPremium ? "Ceiling" : "Ceiling 🔒"}
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+
+              <tbody className="divide-y divide-white/10">
+                {filtered.map((r, idx) => (
+                  <tr key={`${idx}`} className="text-slate-100 hover:bg-white/5">
+                    <td className="px-3 py-3 text-slate-300">
+                      {String(r.weekend_date ?? "—")}
+                    </td>
+
+                    <td className="px-3 py-3 font-semibold">
+                      {String(pick(r, ["event_name", "event_id"], "—"))}
+                    </td>
+
+                    <td className="px-3 py-3 text-slate-200">
+                      {String(r.division ?? "—")}
+                    </td>
+
+                    <td className="px-3 py-3 font-semibold">
+                      {String(r.size_effective ?? "—")}
+                    </td>
+
+                    <td className="px-3 py-2 text-right font-semibold">
+                      {Number(r.event_score).toFixed(3)}
+                    </td>
+
+                    <td className="px-3 py-2 text-right text-slate-400">
+  {!premiumLoading && isPremium ? (
+    r.ceiling_supported
+      ? Number(r.ceiling_score_true).toFixed(3)
+      : "—"
+  ) : (
+    <span className="text-white/25 tracking-[0.2em]">•••••</span>
+  )}
+</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
-    )}
-  </main>
-);
+      )}
+    </main>
+  );
 }

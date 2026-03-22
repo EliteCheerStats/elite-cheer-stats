@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { BarRankingsChart } from "./BarRankingsChart";
-
+import Link from "next/link";
 type Row = Record<string, any>;
 
 function pick<T = any>(row: Row, candidates: string[], fallback: T): T {
@@ -190,7 +190,9 @@ export default function RankingsPage() {
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<any>(null);
-
+  const [premiumLoading, setPremiumLoading] = useState(true);
+  const [isPremium, setIsPremium] = useState(false);
+  const [session, setSession] = useState<any>(null);
   const programKeys = ["program", "program_name", "gym", "gym_name"];
   const teamKeys = ["team", "team_name"];
   const eventScoreKeys = ["event_score", "event_total", "total_score", "score"];
@@ -198,13 +200,69 @@ export default function RankingsPage() {
   const eventIdKeys = ["event_id", "eventId", "competition_id"];
   const weekendKeys = ["event_start_date", "weekend"];
   const sourceUrlKeys = ["source_url", "sourceUrl", "url"];
-
+  
   const setFilter = <K extends keyof Filters>(key: K, value: Filters[K]) => {
     setFilters((f) => ({ ...f, [key]: value }));
   };
 
   const clearFilters = () => setFilters(DEFAULT_FILTERS);
+useEffect(() => {
+  let mounted = true;
 
+  async function checkPremium() {
+    setPremiumLoading(true);
+
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (!mounted) return;
+
+    setSession(session);
+
+    if (!session?.user) {
+      setIsPremium(false);
+      setPremiumLoading(false);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("is_premium")
+      .eq("id", session.user.id)
+      .maybeSingle();
+
+    if (!mounted) return;
+
+    if (error) {
+      console.error("rankings premium check error:", error);
+      setIsPremium(false);
+      setPremiumLoading(false);
+      return;
+    }
+
+    setIsPremium(!!data?.is_premium);
+    setPremiumLoading(false);
+  }
+
+  checkPremium();
+
+  const { data: listener } = supabase.auth.onAuthStateChange(() => {
+    checkPremium();
+  });
+
+  const handleFocus = () => {
+    checkPremium();
+  };
+
+  window.addEventListener("focus", handleFocus);
+
+  return () => {
+    mounted = false;
+    listener.subscription.unsubscribe();
+    window.removeEventListener("focus", handleFocus);
+  };
+}, []);
   useEffect(() => {
     let cancelled = false;
 
@@ -617,17 +675,83 @@ export default function RankingsPage() {
               </thead>
 
               <tbody className="divide-y divide-white/10">
-                {tableTop20.map((t, idx) => (
-                  <tr key={t.key} className="text-slate-100 hover:bg-white/5">
-                    <td className="px-3 py-3 text-slate-300">{idx + 1}</td>
-                    <td className="px-3 py-3 font-semibold">{t.team}</td>
-                    <td className="px-3 py-3 text-slate-200">{t.program}</td>
-                    <td className="px-3 py-3 text-slate-200">{t.bucket}</td>
-                    <td className="px-3 py-3 text-right font-semibold">{t.avg.toFixed(3)}</td>
-                    <td className="px-3 py-3 text-right text-slate-200">{t.comps}</td>
-                  </tr>
-                ))}
-              </tbody>
+  {/* Top 10 (FREE) */}
+  {tableTop20.slice(0, 10).map((t, idx) => (
+    <tr key={t.key} className="text-slate-100 hover:bg-white/5">
+      <td className="px-3 py-3 text-slate-300">{idx + 1}</td>
+      <td className="px-3 py-3 font-semibold">{t.team}</td>
+      <td className="px-3 py-3 text-slate-200">{t.program}</td>
+      <td className="px-3 py-3 text-slate-200">{t.bucket}</td>
+      <td className="px-3 py-3 text-right font-semibold">
+        {t.avg.toFixed(3)}
+      </td>
+      <td className="px-3 py-3 text-right text-slate-200">{t.comps}</td>
+    </tr>
+  ))}
+
+  {/* 11–20 (LOCKED) */}
+  {tableTop20.slice(10, 20).map((t, idx) => (
+    <tr key={t.key}>
+      <td className="px-3 py-3 text-slate-500">{idx + 11}</td>
+
+      {!premiumLoading && isPremium ? (
+        <>
+          <td className="px-3 py-3 font-semibold">{t.team}</td>
+          <td className="px-3 py-3 text-slate-200">{t.program}</td>
+          <td className="px-3 py-3 text-slate-200">{t.bucket}</td>
+          <td className="px-3 py-3 text-right font-semibold">
+            {t.avg.toFixed(3)}
+          </td>
+          <td className="px-3 py-3 text-right text-slate-200">
+            {t.comps}
+          </td>
+        </>
+      ) : (
+        <>
+          <td className="px-3 py-3 text-slate-500">••••••••••</td>
+          <td className="px-3 py-3 text-slate-500">••••••••••</td>
+          <td className="px-3 py-3 text-slate-500">••••••••••</td>
+          <td className="px-3 py-3 text-right text-slate-500">•••••</td>
+          <td className="px-3 py-3 text-right text-slate-500">••</td>
+        </>
+      )}
+    </tr>
+  ))}
+
+  {/* CTA ROW */}
+  {!premiumLoading && !isPremium && tableTop20.length > 10 && (
+    <tr>
+      <td colSpan={6} className="px-4 py-6">
+        <div className="rounded-2xl border border-white/10 bg-[#131f3a]/95 p-5 text-center">
+          <div className="text-lg font-bold text-white">
+            Unlock Full Rankings
+          </div>
+          <div className="mt-2 text-sm text-white/70">
+            See teams ranked 11–20 and beyond
+          </div>
+
+          <div className="mt-4 flex justify-center gap-3">
+            {session?.user ? (
+              <Link
+                href="/upgrade"
+                className="rounded-md bg-teal-400 px-4 py-2 font-semibold text-slate-900 hover:opacity-90"
+              >
+                Go Premium
+              </Link>
+            ) : (
+              <Link
+                href="/compare"
+                className="rounded-md bg-teal-400 px-4 py-2 font-semibold text-slate-900 hover:opacity-90"
+              >
+                Sign In
+              </Link>
+            )}
+          </div>
+        </div>
+      </td>
+    </tr>
+  )}
+</tbody>
             </table>
           </div>
         )}

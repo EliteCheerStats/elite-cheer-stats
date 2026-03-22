@@ -14,6 +14,7 @@ import "./globals.css";
 import { Analytics } from "@vercel/analytics/react";
 import Image from "next/image";
 import Link from "next/link";
+import SubscriptionButton from "@/app/components/SubscriptionButton";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -44,29 +45,35 @@ export default function RootLayout({
               Elite Cheer <span className="text-teal-400">Stats</span>
             </a>
             
-            <nav className="flex flex-wrap items-center gap-2 text-sm text-slate-200 sm:gap-4">
+           <nav className="flex flex-wrap items-center gap-2 text-sm text-slate-200 sm:gap-4">
+
+  <a className="hover:text-white" href="/about">
+    About
+  </a>
+
   <a className="hover:text-white" href="/rankings">
     Rankings
   </a>
+
   <a className="hover:text-white" href="/team">
     Team Search
   </a>
-  <a className="hover:text-white" href="/compare">
-  Team Comparison
-</a>
-<a className="hover:text-white" href="/about">
-  About
-</a>
+
+  <a
+    className="rounded-lg border border-teal-400/30 px-3 py-1.5 text-teal-200 hover:bg-teal-500/10"
+    href="/compare"
+  >
+    Team Comparison
+  </a>
+
   <a
     className="rounded-lg bg-teal-500/15 px-3 py-1.5 text-teal-200 hover:bg-teal-500/25"
     href="/comp-builder"
   >
     Comp Builder
   </a>
+<SubscriptionButton />
 
-  <span className="ml-1 rounded-full border border-amber-400/25 bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium tracking-wide text-amber-200">
-  Free Beta • Premium Coming
-</span>
 </nav>
           </div>
         </header>
