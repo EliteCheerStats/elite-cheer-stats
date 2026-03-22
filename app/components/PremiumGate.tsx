@@ -6,9 +6,13 @@ import { supabase } from "@/lib/supabaseClient";
 
 type PremiumGateProps = {
   children: React.ReactNode;
+  nextPath?: string;
 };
 
-export default function PremiumGate({ children }: PremiumGateProps) {
+export default function PremiumGate({
+  children,
+  nextPath = "/",
+}: PremiumGateProps) {
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState<any>(null);
   const [isPremium, setIsPremium] = useState(false);
