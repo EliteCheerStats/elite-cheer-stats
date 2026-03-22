@@ -13,7 +13,7 @@ function SignupPageFallback() {
       </div>
     </main>
   );
-}
+} 
 
 export default function SignupPage() {
   return (
