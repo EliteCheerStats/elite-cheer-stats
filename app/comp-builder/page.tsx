@@ -14,6 +14,7 @@ import {
 } from "recharts";
 
 const STORAGE_KEY = "ecs_comp_builder_email_v1";
+const COMP_STORAGE_KEY = "ecs_comp_builder_state_v1";
 const SAVE_TO_SUPABASE = true;
 
 const supabase =
@@ -82,6 +83,43 @@ const TEAM_COLORS = [
   "#f97316",
   "#c084fc",
 ];
+
+function loadSavedCompState(): {
+  roster: TeamOption[];
+  primaryTeamId: string;
+} {
+  try {
+    const raw = window.localStorage.getItem(COMP_STORAGE_KEY);
+    if (!raw) {
+      return { roster: [], primaryTeamId: "" };
+    }
+
+    const parsed = JSON.parse(raw) as {
+      roster?: TeamOption[];
+      primaryTeamId?: string;
+    };
+
+    return {
+      roster: Array.isArray(parsed?.roster) ? parsed.roster : [],
+      primaryTeamId:
+        typeof parsed?.primaryTeamId === "string" ? parsed.primaryTeamId : "",
+    };
+  } catch (error) {
+    console.error("Failed to load saved Comp Builder state:", error);
+    return { roster: [], primaryTeamId: "" };
+  }
+}
+
+function saveCompState(roster: TeamOption[], primaryTeamId: string) {
+  try {
+    window.localStorage.setItem(
+      COMP_STORAGE_KEY,
+      JSON.stringify({ roster, primaryTeamId })
+    );
+  } catch (error) {
+    console.error("Failed to save Comp Builder state:", error);
+  }
+}
 
 function formatScore(value: number | null | undefined) {
   if (value == null || Number.isNaN(value)) return "--";
@@ -189,6 +227,12 @@ function CompBuilderInner() {
     } catch {
       // ignore
     }
+  }, []);
+
+  useEffect(() => {
+    const saved = loadSavedCompState();
+    setRoster(saved.roster);
+    setPrimaryTeamId(saved.primaryTeamId);
   }, []);
 
   useEffect(() => {
@@ -436,6 +480,7 @@ function CompBuilderInner() {
   const reset = () => {
     try {
       localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(COMP_STORAGE_KEY);
     } catch {
       // ignore
     }
@@ -548,13 +593,12 @@ function CompBuilderInner() {
     if (roster.some((t) => t.id === team.id)) return;
     if (roster.length >= 12) return;
 
-    const isFirstTeam = roster.length === 0;
+    const nextRoster = [...roster, team];
+    const nextPrimaryTeamId = roster.length === 0 ? team.id : primaryTeamId;
 
-    setRoster((prev) => [...prev, team]);
-
-    if (isFirstTeam) {
-      setPrimaryTeamId(team.id);
-    }
+    setRoster(nextRoster);
+    setPrimaryTeamId(nextPrimaryTeamId);
+    saveCompState(nextRoster, nextPrimaryTeamId);
 
     setSearchTerm("");
     setSearchResults([]);
@@ -563,14 +607,18 @@ function CompBuilderInner() {
 
   function removeTeam(teamId: string) {
     const nextRoster = roster.filter((t) => t.id !== teamId);
+    const nextPrimaryTeamId =
+      primaryTeamId === teamId ? nextRoster[0]?.id ?? "" : primaryTeamId;
 
     setRoster(nextRoster);
+    setPrimaryTeamId(nextPrimaryTeamId);
     setExpandedTeams((prev) => prev.filter((id) => id !== teamId));
+    saveCompState(nextRoster, nextPrimaryTeamId);
+  }
 
-    if (primaryTeamId === teamId) {
-      const nextPrimaryId = nextRoster[0]?.id ?? "";
-      setPrimaryTeamId(nextPrimaryId);
-    }
+  function setFocusTeam(teamId: string) {
+    setPrimaryTeamId(teamId);
+    saveCompState(roster, teamId);
   }
 
   function toggleExpanded(teamId: string) {
@@ -774,7 +822,7 @@ function CompBuilderInner() {
             </div>
           </div>
 
-          {/*
+          {/* 
           <button
             onClick={reset}
             className="rounded-md border border-white/15 hover:bg-white/5 px-3 py-2 text-sm"
@@ -913,9 +961,7 @@ function CompBuilderInner() {
 
                       <div className="mt-3 flex flex-wrap gap-2">
                         <button
-                          onClick={() => {
-                            setPrimaryTeamId(team.id);
-                          }}
+                          onClick={() => setFocusTeam(team.id)}
                           className={`rounded-md px-2 py-1 text-xs ${
                             isPrimary
                               ? "bg-teal-500/90 text-white"
