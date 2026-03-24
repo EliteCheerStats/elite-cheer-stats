@@ -54,7 +54,7 @@ const { data, error } = await supabase
   `)
   .or(`team.ilike.%${search}%,program.ilike.%${search}%`)
   .order("team")
-  .limit(20);
+  .limit(200);
 
 if (cancelled) return;
 
