@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { BarRankingsChart } from "./BarRankingsChart";
 import Link from "next/link";
+
 type Row = Record<string, any>;
 
 function pick<T = any>(row: Row, candidates: string[], fallback: T): T {
@@ -40,7 +41,6 @@ async function handleShare() {
     console.error("Share failed:", err);
   }
 }
-
 
 function titleCase(s: string) {
   const t = normalize(s);
@@ -87,12 +87,12 @@ function inferLevelFromDivision(divisionRaw: string): string | null {
 function inferAgeFromDivision(divisionRaw: string): string | null {
   const d = normalize(divisionRaw);
   const candidates: Array<[string, string]> = [
-  ["tiny", "Tiny"],
-  ["mini", "Mini"],
-  ["youth", "Youth"],
-  ["junior", "Junior"],
-  ["senior", "Senior"],
-];
+    ["tiny", "Tiny"],
+    ["mini", "Mini"],
+    ["youth", "Youth"],
+    ["junior", "Junior"],
+    ["senior", "Senior"],
+  ];
   for (const [k, label] of candidates) {
     if (d.includes(k)) return label;
   }
@@ -149,21 +149,21 @@ function parseMeta(r: Row) {
   return { division, level, age, isD2, isFlex, size };
 }
 
-  function isSupportedForRankings(meta: {
-    division: string;
-    level: string | null;
-    age: string | null;
-    size: string | null;
-  }) {
-    const d = normalize(meta.division);
+function isSupportedForRankings(meta: {
+  division: string;
+  level: string | null;
+  age: string | null;
+  size: string | null;
+}) {
+  const d = normalize(meta.division);
 
-    if (meta.level === "L7") return false;
-    if (d.includes("coed")) return false;
-    if (meta.age === "U16" || meta.age === "U18" || meta.age === "Open") return false;
-    if (meta.size === "X-Large") return false;
+  if (meta.level === "L7") return false;
+  if (d.includes("coed")) return false;
+  if (meta.age === "U16" || meta.age === "U18" || meta.age === "Open") return false;
+  if (meta.size === "X-Large") return false;
 
-    return true;
-  }
+  return true;
+}
 
 function buildTrackKey(meta: { level: string | null; age: string | null; isFlex: boolean; isD2: boolean }) {
   const parts: string[] = [];
@@ -200,69 +200,71 @@ export default function RankingsPage() {
   const eventIdKeys = ["event_id", "eventId", "competition_id"];
   const weekendKeys = ["event_start_date", "weekend"];
   const sourceUrlKeys = ["source_url", "sourceUrl", "url"];
-  
+
   const setFilter = <K extends keyof Filters>(key: K, value: Filters[K]) => {
     setFilters((f) => ({ ...f, [key]: value }));
   };
 
   const clearFilters = () => setFilters(DEFAULT_FILTERS);
-useEffect(() => {
-  let mounted = true;
 
-  async function checkPremium() {
-    setPremiumLoading(true);
+  useEffect(() => {
+    let mounted = true;
 
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
+    async function checkPremium() {
+      setPremiumLoading(true);
 
-    if (!mounted) return;
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
-    setSession(session);
+      if (!mounted) return;
 
-    if (!session?.user) {
-      setIsPremium(false);
+      setSession(session);
+
+      if (!session?.user) {
+        setIsPremium(false);
+        setPremiumLoading(false);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("is_premium")
+        .eq("id", session.user.id)
+        .maybeSingle();
+
+      if (!mounted) return;
+
+      if (error) {
+        console.error("rankings premium check error:", error);
+        setIsPremium(false);
+        setPremiumLoading(false);
+        return;
+      }
+
+      setIsPremium(!!data?.is_premium);
       setPremiumLoading(false);
-      return;
     }
 
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("is_premium")
-      .eq("id", session.user.id)
-      .maybeSingle();
-
-    if (!mounted) return;
-
-    if (error) {
-      console.error("rankings premium check error:", error);
-      setIsPremium(false);
-      setPremiumLoading(false);
-      return;
-    }
-
-    setIsPremium(!!data?.is_premium);
-    setPremiumLoading(false);
-  }
-
-  checkPremium();
-
-  const { data: listener } = supabase.auth.onAuthStateChange(() => {
     checkPremium();
-  });
 
-  const handleFocus = () => {
-    checkPremium();
-  };
+    const { data: listener } = supabase.auth.onAuthStateChange(() => {
+      checkPremium();
+    });
 
-  window.addEventListener("focus", handleFocus);
+    const handleFocus = () => {
+      checkPremium();
+    };
 
-  return () => {
-    mounted = false;
-    listener.subscription.unsubscribe();
-    window.removeEventListener("focus", handleFocus);
-  };
-}, []);
+    window.addEventListener("focus", handleFocus);
+
+    return () => {
+      mounted = false;
+      listener.subscription.unsubscribe();
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -276,12 +278,10 @@ useEffect(() => {
         .gte("weekend_date", SEASON_START)
         .order("weekend_date", { ascending: false });
 
-      // server-side level filter
       if (filters.level !== "All") {
         q = q.ilike("division", `${filters.level}%`);
       }
 
-      // server-side search (optional)
       const s = filters.search.trim();
       if (s.length >= 2) {
         const esc = s.replace(/,/g, "");
@@ -309,7 +309,6 @@ useEffect(() => {
     };
   }, [filters.level, filters.search]);
 
-  // row-level filters only (NOT size)
   const filteredRows = useMemo(() => {
     const q = filters.search.trim().toLowerCase();
     const ageNorm = normalize(filters.age);
@@ -318,7 +317,6 @@ useEffect(() => {
       const meta = parseMeta(r);
       if (!isSupportedForRankings(meta)) return false;
 
-      // age
       if (filters.age !== "All") {
         const rowAge = String(r.age_bucket ?? "");
         if (rowAge) {
@@ -328,14 +326,12 @@ useEffect(() => {
         }
       }
 
-      // d2/flex
       if (filters.d2Mode === "D2Only" && !meta.isD2) return false;
       if (filters.d2Mode === "NonD2Only" && meta.isD2) return false;
 
       if (filters.flexMode === "FlexOnly" && !meta.isFlex) return false;
       if (filters.flexMode === "NonFlexOnly" && meta.isFlex) return false;
 
-      // local search fallback
       if (q) {
         const eventName = String(pick(r, eventNameKeys, "")).toLowerCase();
         const program = String(pick(r, programKeys, "")).toLowerCase();
@@ -348,17 +344,12 @@ useEffect(() => {
     });
   }, [rows, filters.age, filters.d2Mode, filters.flexMode, filters.search]);
 
-  // Aggregate teams:
-  // - dedupe to 1 score per team per comp
-  // - avg across season
-  // - compute "final size"
-  // - apply size filter at team-level
   const teamRankings = useMemo(() => {
     type Agg = {
       key: string;
       program: string;
       team: string;
-      track: string; // level+age+flex+d2 (no size)
+      track: string;
       compScores: Map<string, number>;
       rowsByWeekendDesc: Array<{ weekend: string; size: Exclude<SizeOpt, "Any"> | null }>;
     };
@@ -388,7 +379,11 @@ useEffect(() => {
       const eventName = String(pick(r, eventNameKeys, "")).trim();
       const sourceUrl = String(pick(r, sourceUrlKeys, "")).trim();
 
-      const compKey = eventId ? `event:${eventId}` : sourceUrl ? `url:${sourceUrl}` : `name:${eventName}__wk:${weekend}`;
+      const compKey = eventId
+        ? `event:${eventId}`
+        : sourceUrl
+        ? `url:${sourceUrl}`
+        : `name:${eventName}__wk:${weekend}`;
 
       let agg = map.get(groupKey);
       if (!agg) {
@@ -396,7 +391,6 @@ useEffect(() => {
         map.set(groupKey, agg);
       }
 
-      // dedupe: keep best score per competition key
       const prev = agg.compScores.get(compKey);
       if (prev === undefined || score > prev) agg.compScores.set(compKey, score);
 
@@ -405,13 +399,12 @@ useEffect(() => {
 
     let out = Array.from(map.values()).map((a) => {
       a.rowsByWeekendDesc.sort((x, y) => (y.weekend || "").localeCompare(x.weekend || ""));
-      const sizeFinal = resolveTeamSize(a.rowsByWeekendDesc); // may be null
+      const sizeFinal = resolveTeamSize(a.rowsByWeekendDesc);
 
       const scores = Array.from(a.compScores.values());
       const comps = scores.length;
       const avg = comps ? scores.reduce((x, y) => x + y, 0) / comps : 0;
 
-      // if never size -> just track (no UNKNOWN)
       const bucket = sizeFinal ? `${a.track} ${sizeFinal}` : a.track;
 
       return {
@@ -425,10 +418,8 @@ useEffect(() => {
       };
     });
 
-    // default: only 2+ comps
     if (filters.requireTwoPlus) out = out.filter((x) => x.comps >= 2);
 
-    // size filter at team-level
     if (filters.size !== "Any") {
       out = out.filter((x) => x.size_final && normalize(x.size_final) === normalize(filters.size));
     }
@@ -459,49 +450,48 @@ useEffect(() => {
     filters.d2Mode === "D2Only" ? "- D2" : null,
     filters.size !== "Any" ? filters.size : null,
   ]
-  .filter(Boolean)
-  .join(" ");
+    .filter(Boolean)
+    .join(" ");
 
   const emptyHint = filters.requireTwoPlus
     ? "No teams match. Default excludes teams with only 1 competition — toggle '2+ comps' off to include them."
     : "No teams match your current filters.";
 
+  const rankingsCtaHref = session?.user ? "/upgrade" : "/login";
+  const showRankingsCta = !premiumLoading && !isPremium;
+
   return (
     <main className="space-y-6">
-      {/* Header */}
-<div className="flex items-end justify-between gap-4">
-  <div>
-    <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight text-slate-100">
-      Rankings
-    </h1>
-    <p className="mt-2 text-slate-300">
-      Season average event score per team (since{" "}
-      <span className="font-semibold text-slate-200">{SEASON_START}</span>).
-    </p>
+      <div className="flex items-end justify-between gap-4">
+        <div>
+          <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight text-slate-100">
+            Rankings
+          </h1>
+          <p className="mt-2 text-slate-300">
+            Season average event score per team (since{" "}
+            <span className="font-semibold text-slate-200">{SEASON_START}</span>).
+          </p>
 
-    <p className="mt-1 text-xs text-slate-400">
-      Scores sourced from Varsity competition results.
-    </p>
-  </div>
+          <p className="mt-1 text-xs text-slate-400">
+            Scores sourced from Varsity competition results.
+          </p>
+        </div>
 
-  <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3">
+          <div className="text-xs text-slate-400">
+            {loading ? "Loading…" : `${rows.length.toLocaleString()} rows loaded`}
+          </div>
 
+          <button
+            type="button"
+            onClick={handleShare}
+            className="h-10 rounded-xl border border-white/10 bg-white/5 px-4 text-sm font-semibold text-slate-100 hover:bg-white/10"
+          >
+            Share
+          </button>
+        </div>
+      </div>
 
-    <div className="text-xs text-slate-400">
-      {loading ? "Loading…" : `${rows.length.toLocaleString()} rows loaded`}
-    </div>
-
-
-    <button
-      type="button"
-      onClick={handleShare}
-      className="h-10 rounded-xl border border-white/10 bg-white/5 px-4 text-sm font-semibold text-slate-100 hover:bg-white/10"
-    >
-      Share
-    </button>
-  </div>
-</div>
-      {/* Filters */}
       <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/10 to-white/5 p-5">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-7 md:items-end">
           <label className="grid gap-1 md:col-span-2">
@@ -570,7 +560,6 @@ useEffect(() => {
           </label>
 
           <div className="flex items-center justify-between gap-3 md:justify-end">
-            {/* Toggle */}
             <div className="flex items-center gap-2">
               <span className="text-xs text-slate-300">2+ comps</span>
               <button
@@ -618,7 +607,6 @@ useEffect(() => {
         </div>
       </div>
 
-      {/* Error */}
       {error && (
         <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4">
           <div className="font-semibold text-red-200">Error</div>
@@ -626,7 +614,6 @@ useEffect(() => {
         </div>
       )}
 
-      {/* ✅ Minimal-effort mobile width fix: min-width + horizontal scroll inside the card */}
       <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
         <div className="flex items-end justify-between gap-4">
           <div>
@@ -649,39 +636,29 @@ useEffect(() => {
         )}
       </div>
 
-      {/* Table */}
       <div className="rounded-2xl border border-white/10 bg-white/5">
         <div className="px-4 py-3">
-  <div className="flex items-center justify-between">
-    <div className="text-sm font-semibold text-slate-100">
-      Top 20
-    </div>
+          <div className="flex items-center justify-between">
+            <div className="text-sm font-semibold text-slate-100">
+              Top 20
+            </div>
 
-    {/* Button stays visible but not cramped */}
-    <div>
-      {session?.user ? (
-        <Link
-          href="/upgrade"
-          className="rounded-md bg-teal-400 px-4 py-2 text-sm font-semibold text-slate-900 hover:opacity-90"
-        >
-          See My Team Rank
-        </Link>
-      ) : (
-        <Link
-          href="/compare"
-          className="rounded-md bg-teal-400 px-4 py-2 text-sm font-semibold text-slate-900 hover:opacity-90"
-        >
-          See My Team Rank
-        </Link>
-      )}
-    </div>
-  </div>
+            <div>
+              {showRankingsCta ? (
+                <Link
+                  href={rankingsCtaHref}
+                  className="rounded-md bg-teal-400 px-4 py-2 text-sm font-semibold text-slate-900 hover:opacity-90"
+                >
+                  {session?.user ? "Upgrade to Premium" : "Create Account"}
+                </Link>
+              ) : null}
+            </div>
+          </div>
 
-  {/* 👇 This is the key improvement */}
-  <div className="mt-1 text-xs text-slate-400">
-    See where your team actually ranks 👀
-  </div>
-</div>
+          <div className="mt-1 text-xs text-slate-400">
+            See where your team actually ranks 👀
+          </div>
+        </div>
 
         {!loading && !error && tableTop20.length === 0 ? (
           <div className="p-6 text-slate-200">{emptyHint}</div>
@@ -700,83 +677,71 @@ useEffect(() => {
               </thead>
 
               <tbody className="divide-y divide-white/10">
-  {/* Top 10 (FREE) */}
-  {tableTop20.slice(0, 10).map((t, idx) => (
-    <tr key={t.key} className="text-slate-100 hover:bg-white/5">
-      <td className="px-3 py-3 text-slate-300">{idx + 1}</td>
-      <td className="px-3 py-3 font-semibold">{t.team}</td>
-      <td className="px-3 py-3 text-slate-200">{t.program}</td>
-      <td className="px-3 py-3 text-slate-200">{t.bucket}</td>
-      <td className="px-3 py-3 text-right font-semibold">
-        {t.avg.toFixed(3)}
-      </td>
-      <td className="px-3 py-3 text-right text-slate-200">{t.comps}</td>
-    </tr>
-  ))}
+                {tableTop20.slice(0, 10).map((t, idx) => (
+                  <tr key={t.key} className="text-slate-100 hover:bg-white/5">
+                    <td className="px-3 py-3 text-slate-300">{idx + 1}</td>
+                    <td className="px-3 py-3 font-semibold">{t.team}</td>
+                    <td className="px-3 py-3 text-slate-200">{t.program}</td>
+                    <td className="px-3 py-3 text-slate-200">{t.bucket}</td>
+                    <td className="px-3 py-3 text-right font-semibold">
+                      {t.avg.toFixed(3)}
+                    </td>
+                    <td className="px-3 py-3 text-right text-slate-200">{t.comps}</td>
+                  </tr>
+                ))}
 
-  {/* 11–20 (LOCKED) */}
-  {tableTop20.slice(10, 20).map((t, idx) => (
-    <tr key={t.key}>
-      <td className="px-3 py-3 text-slate-500">{idx + 11}</td>
+                {tableTop20.slice(10, 20).map((t, idx) => (
+                  <tr key={t.key}>
+                    <td className="px-3 py-3 text-slate-500">{idx + 11}</td>
 
-      {!premiumLoading && isPremium ? (
-        <>
-          <td className="px-3 py-3 font-semibold">{t.team}</td>
-          <td className="px-3 py-3 text-slate-200">{t.program}</td>
-          <td className="px-3 py-3 text-slate-200">{t.bucket}</td>
-          <td className="px-3 py-3 text-right font-semibold">
-            {t.avg.toFixed(3)}
-          </td>
-          <td className="px-3 py-3 text-right text-slate-200">
-            {t.comps}
-          </td>
-        </>
-      ) : (
-        <>
-          <td className="px-3 py-3 text-slate-500">Almost Top 10...👀</td>
-          <td className="px-3 py-3 text-slate-500">••••••••••</td>
-          <td className="px-3 py-3 text-slate-500">••••••••••</td>
-          <td className="px-3 py-3 text-right text-slate-500">•••••</td>
-          <td className="px-3 py-3 text-right text-slate-500">••</td>
-        </>
-      )}
-    </tr>
-  ))}
+                    {!premiumLoading && isPremium ? (
+                      <>
+                        <td className="px-3 py-3 font-semibold">{t.team}</td>
+                        <td className="px-3 py-3 text-slate-200">{t.program}</td>
+                        <td className="px-3 py-3 text-slate-200">{t.bucket}</td>
+                        <td className="px-3 py-3 text-right font-semibold">
+                          {t.avg.toFixed(3)}
+                        </td>
+                        <td className="px-3 py-3 text-right text-slate-200">
+                          {t.comps}
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        <td className="px-3 py-3 text-slate-500">Almost Top 10...👀</td>
+                        <td className="px-3 py-3 text-slate-500">••••••••••</td>
+                        <td className="px-3 py-3 text-slate-500">••••••••••</td>
+                        <td className="px-3 py-3 text-right text-slate-500">•••••</td>
+                        <td className="px-3 py-3 text-right text-slate-500">••</td>
+                      </>
+                    )}
+                  </tr>
+                ))}
 
-  {/* CTA ROW */}
-  {!premiumLoading && !isPremium && tableTop20.length > 10 && (
-    <tr>
-      <td colSpan={6} className="px-4 py-6">
-        <div className="rounded-2xl border border-white/10 bg-[#131f3a]/95 p-5 text-center">
-          <div className="text-lg font-bold text-white">
-            You’re probably just outside the Top 10 👀
-          </div>
-          <div className="mt-2 text-sm text-white/70">
-            Most teams think they’re Top 10… they’re not. See where your team actually ranks.
-          </div>
+                {!premiumLoading && !isPremium && tableTop20.length > 10 && (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-6">
+                      <div className="rounded-2xl border border-white/10 bg-[#131f3a]/95 p-5 text-center">
+                        <div className="text-lg font-bold text-white">
+                          You’re probably just outside the Top 10 👀
+                        </div>
+                        <div className="mt-2 text-sm text-white/70">
+                          Most teams think they’re Top 10… they’re not. See where your team actually ranks.
+                        </div>
 
-          <div className="mt-4 flex justify-center gap-3">
-            {session?.user ? (
-              <Link
-                href="/upgrade"
-                className="rounded-md bg-teal-400 px-4 py-2 font-semibold text-slate-900 hover:opacity-90"
-              >
-                See My Team Rank
-              </Link>
-            ) : (
-              <Link
-                href="/compare"
-                className="rounded-md bg-teal-400 px-4 py-2 font-semibold text-slate-900 hover:opacity-90"
-              >
-                See My Team Rank
-              </Link>
-            )}
-          </div>
-        </div>
-      </td>
-    </tr>
-  )}
-</tbody>
+                        <div className="mt-4 flex justify-center gap-3">
+                          <Link
+                            href={rankingsCtaHref}
+                            className="rounded-md bg-teal-400 px-4 py-2 font-semibold text-slate-900 hover:opacity-90"
+                          >
+                            {session?.user ? "Upgrade to Premium" : "Create Account"}
+                          </Link>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
             </table>
           </div>
         )}

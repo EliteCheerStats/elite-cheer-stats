@@ -489,7 +489,7 @@ console.table(
       </div>
 
       <Link
-        href={session?.user ? "/upgrade" : "/compare"}
+        href={session?.user ? "/upgrade" : "/login"}
         className="rounded-md bg-teal-400 px-3 py-1.5 text-xs font-semibold text-black shadow-md hover:bg-teal-300 transition"
       >
         See Full Breakdown
