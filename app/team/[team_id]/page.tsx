@@ -76,7 +76,7 @@ function PremiumBlur({
             href="/upgrade"
             className="rounded-xl border border-white/10 bg-[#131f3a]/95 px-4 py-3 text-sm font-semibold text-white shadow-xl backdrop-blur hover:bg-[#182447]"
           >
-            Go Premium
+            See Why They’re Not Winning
           </Link>
         ) : (
           <Link
@@ -451,29 +451,52 @@ console.table(
             <div className="mt-1 text-xs text-slate-400">Peak event score</div>
           </div>
 
-          <PremiumBlur isPremium={!premiumLoading && isPremium} session={session}>
-            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-  <div className="text-xs uppercase tracking-wide text-slate-400">
-    Hit Zero Rate {!isPremium && "🔒"}
-  </div>
+          {!premiumLoading && isPremium ? (
+  <div className="rounded-2xl border border-teal-400/10 bg-teal-500/[0.03] p-4">
+    <div className="text-xs uppercase tracking-wide text-slate-400">
+      Hit Zero Rate
+    </div>
 
-  <div className="mt-2 text-2xl font-extrabold text-teal-300">
-    {!premiumLoading && isPremium
-      ? loading
-        ? "—"
-        : `${hitRate.pct.toFixed(1)}%`
-      : "•••"}
-  </div>
+    <div className="mt-2 text-2xl font-extrabold text-teal-300">
+      {loading ? "—" : `${hitRate.pct.toFixed(1)}%`}
+    </div>
 
-  <div className="mt-1 text-xs text-slate-400">
-    {!premiumLoading && isPremium
-      ? loading
-        ? "—"
-        : `${hitRate.hits}/${hitRate.total} performances hit zero`
-      : "Premium required"}
+    <div className="mt-1 text-xs text-slate-400">
+      {loading ? "—" : `${hitRate.hits}/${hitRate.total} performances hit zero`}
+    </div>
   </div>
+) : (
+  <div className="rounded-2xl border border-teal-400/10 bg-teal-500/[0.03] p-4">
+    <div className="text-xs uppercase tracking-wide text-slate-400">
+      Hit Zero Rate 🔒
+    </div>
+
+    <div className="mt-2 relative select-none">
+<div className="mt-2 text-2xl font-extrabold text-teal-300">
+  •••
 </div>
-          </PremiumBlur>
+
+<div className="mt-2 text-xs text-slate-300 italic text-center">
+  This is often the difference between winning and placing
+</div>
+
+  <div className="absolute inset-0 rounded-md bg-[#0b1220]/35 pointer-events-none" />
+</div>
+
+    <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-[#0b1220]/80 px-3 py-2">
+      <div className="text-xs text-slate-300">
+        Unlock full team insights
+      </div>
+
+      <Link
+        href={session?.user ? "/upgrade" : "/compare"}
+        className="rounded-md bg-teal-400 px-3 py-1.5 text-xs font-semibold text-black shadow-md hover:bg-teal-300 transition"
+      >
+        See Full Breakdown
+      </Link>
+    </div>
+  </div>
+)}
 
           <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
             <div className="text-xs uppercase tracking-wide text-slate-400">Events</div>
@@ -519,8 +542,15 @@ console.table(
           <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
             <div className="flex items-end justify-between gap-4">
               <div>
-                <h2 className="text-lg font-bold text-slate-100">Score Trend</h2>
-                <p className="text-sm text-slate-400">Event score trend by weekend (based on current filters).</p>
+                <div className="mt-2 inline-flex items-center gap-2 rounded-md bg-teal-500/10 border border-teal-400/20 px-3 py-1 text-xs font-semibold text-teal-300">
+  ⚡ One hit can change everything
+</div>
+                <h2 className="text-lg font-bold text-white">
+  Score Trend
+</h2>
+                <p className="text-sm text-slate-400 mt-1">
+  Event score by weekend
+</p>
               </div>
               <div className="text-xs text-slate-400">
                 Points: <span className="font-semibold text-slate-200">{trendData.length}</span>
@@ -529,12 +559,12 @@ console.table(
 
             <div className="mt-4 mb-2 flex items-center gap-2">
               <label
-                className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm ${
-                  !premiumLoading && isPremium
-                    ? "border-white/10 bg-white/5 text-white"
-                    : "cursor-not-allowed border-white/10 bg-white/[0.03] text-white/40"
-                }`}
-                title={!premiumLoading && isPremium ? "Toggle ceiling score" : "Premium required"}
+  className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm ${
+    !premiumLoading && isPremium
+      ? "border-teal-400/30 bg-teal-500/10 text-teal-200"
+      : "cursor-not-allowed border-teal-400/15 bg-teal-500/[0.06] text-white/60"
+  }`}
+                title={!premiumLoading && isPremium ? "See how high they can actually score" : "Unlock winning potential"}
               >
                 <input
                   id="toggle-ceiling"
@@ -546,16 +576,16 @@ console.table(
                   }}
                   disabled={premiumLoading || !isPremium}
                   className={`h-4 w-4 ${
-                    !premiumLoading && isPremium
-                      ? "cursor-pointer"
-                      : "cursor-not-allowed opacity-50"
-                  }`}
+  !premiumLoading && isPremium
+    ? "accent-teal-400 cursor-pointer"
+    : "opacity-50 cursor-not-allowed"
+}`}
                 />
-                <span>Show Ceiling Score</span>
+                <span className="font-semibold">Winning Potential</span>
                 {(!premiumLoading && !isPremium) && (
-                  <span className="ml-1 rounded-full border border-white/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-white/50">
-                    Premium
-                  </span>
+                 <span className="ml-2 rounded-full border border-teal-400/20 bg-teal-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-teal-300">
+  Premium
+</span>
                 )}
               </label>
             </div>

@@ -56,7 +56,7 @@ export default function SubscriptionButton() {
   if (!session) {
     return (
       <Link
-        href="/compare"
+        href="/login"
         className="ml-1 rounded-full border border-white/15 px-3 py-1 text-xs font-medium text-white/80 hover:bg-white/10"
       >
         Sign In

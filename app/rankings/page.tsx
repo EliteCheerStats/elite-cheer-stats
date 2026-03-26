@@ -651,12 +651,37 @@ useEffect(() => {
 
       {/* Table */}
       <div className="rounded-2xl border border-white/10 bg-white/5">
-        <div className="flex items-center justify-between px-4 py-3">
-          <div>
-            <div className="text-sm font-semibold text-slate-100">Top 20</div>
-            <div className="text-xs text-slate-400">Season avg event score</div>
-          </div>
-        </div>
+        <div className="px-4 py-3">
+  <div className="flex items-center justify-between">
+    <div className="text-sm font-semibold text-slate-100">
+      Top 20
+    </div>
+
+    {/* Button stays visible but not cramped */}
+    <div>
+      {session?.user ? (
+        <Link
+          href="/upgrade"
+          className="rounded-md bg-teal-400 px-4 py-2 text-sm font-semibold text-slate-900 hover:opacity-90"
+        >
+          See My Team Rank
+        </Link>
+      ) : (
+        <Link
+          href="/compare"
+          className="rounded-md bg-teal-400 px-4 py-2 text-sm font-semibold text-slate-900 hover:opacity-90"
+        >
+          See My Team Rank
+        </Link>
+      )}
+    </div>
+  </div>
+
+  {/* 👇 This is the key improvement */}
+  <div className="mt-1 text-xs text-slate-400">
+    See where your team actually ranks 👀
+  </div>
+</div>
 
         {!loading && !error && tableTop20.length === 0 ? (
           <div className="p-6 text-slate-200">{emptyHint}</div>
@@ -708,7 +733,7 @@ useEffect(() => {
         </>
       ) : (
         <>
-          <td className="px-3 py-3 text-slate-500">••••••••••</td>
+          <td className="px-3 py-3 text-slate-500">Almost Top 10...👀</td>
           <td className="px-3 py-3 text-slate-500">••••••••••</td>
           <td className="px-3 py-3 text-slate-500">••••••••••</td>
           <td className="px-3 py-3 text-right text-slate-500">•••••</td>
@@ -724,10 +749,10 @@ useEffect(() => {
       <td colSpan={6} className="px-4 py-6">
         <div className="rounded-2xl border border-white/10 bg-[#131f3a]/95 p-5 text-center">
           <div className="text-lg font-bold text-white">
-            Unlock Full Rankings
+            You’re probably just outside the Top 10 👀
           </div>
           <div className="mt-2 text-sm text-white/70">
-            See teams ranked 11–20 and beyond
+            Most teams think they’re Top 10… they’re not. See where your team actually ranks.
           </div>
 
           <div className="mt-4 flex justify-center gap-3">
@@ -736,14 +761,14 @@ useEffect(() => {
                 href="/upgrade"
                 className="rounded-md bg-teal-400 px-4 py-2 font-semibold text-slate-900 hover:opacity-90"
               >
-                Go Premium
+                See My Team Rank
               </Link>
             ) : (
               <Link
                 href="/compare"
                 className="rounded-md bg-teal-400 px-4 py-2 font-semibold text-slate-900 hover:opacity-90"
               >
-                Sign In
+                See My Team Rank
               </Link>
             )}
           </div>
@@ -758,8 +783,7 @@ useEffect(() => {
       </div>
 
       <div className="text-xs text-slate-500">
-        Avg is across unique competitions (event_id preferred; else source_url; else event_name + event_start_date). Team Size is latest
-        non-null size; if none recently, last known size; if never any size, division remains without size.
+        Rankings are calculated using real competition scores from this season — based on available results — no opinions, just outcomes.
       </div>
     </main>
   );
