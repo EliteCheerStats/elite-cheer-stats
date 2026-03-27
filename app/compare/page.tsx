@@ -332,6 +332,11 @@ function buildComparisonVerdict(params: {
       icon: "🏆",
       text: `${avgLeaderName} leads average score by ${avgAbs.toFixed(3)}`,
     });
+  } else {
+    bullets.push({
+      icon: "🏆",
+      text: "Average score is basically even",
+    });
   }
 
   if (isPremium) {
@@ -369,20 +374,11 @@ function buildComparisonVerdict(params: {
     });
   }
 
-  const scoreOnlyTone =
-    avgAbs < 0.2 ? "close" : avgAbs < 0.5 ? "slight" : "clear";
+  const scoreTone: VerdictTone =
+    avgAbs >= 1.0 ? "clear" : avgAbs >= 0.35 ? "slight" : "close";
 
   if (!isPremium) {
     if (!avgLeaderName || !avgTrailName) {
-      return {
-        tone: "neutral",
-        headline: "Compare score, ceiling, and consistency to see where each team stands.",
-        bullets,
-        verdict: "VERDICT: Need both teams loaded",
-      };
-    }
-
-    if (scoreOnlyTone === "close") {
       return {
         tone: "close",
         headline: "These teams are very close on average score right now.",
@@ -391,7 +387,16 @@ function buildComparisonVerdict(params: {
       };
     }
 
-    if (scoreOnlyTone === "slight") {
+    if (scoreTone === "clear") {
+      return {
+        tone: "clear",
+        headline: `${avgLeaderName} has a clear edge over ${avgTrailName} right now.`,
+        bullets,
+        verdict: `VERDICT: ${titleCaseVerdict(avgLeaderName)} is favored`,
+      };
+    }
+
+    if (scoreTone === "slight") {
       return {
         tone: "slight",
         headline: `${avgLeaderName} has a slight edge over ${avgTrailName} right now.`,
@@ -401,6 +406,28 @@ function buildComparisonVerdict(params: {
     }
 
     return {
+      tone: "close",
+      headline: "These teams are very close on average score right now.",
+      bullets,
+      verdict: "VERDICT: This matchup looks tight",
+    };
+  }
+
+  if (!avgLeaderName || !avgTrailName) {
+    return {
+      tone: "close",
+      headline: "This matchup is tighter than it looks.",
+      bullets,
+      verdict: "VERDICT: Too close to call cleanly",
+    };
+  }
+
+  const supportCount =
+    (avgCeilingLeader === avgScoreLeader ? 1 : 0) +
+    (hitRateLeader === avgScoreLeader ? 1 : 0);
+
+  if (scoreTone === "clear" && supportCount === 2) {
+    return {
       tone: "clear",
       headline: `${avgLeaderName} has a clear edge over ${avgTrailName} right now.`,
       bullets,
@@ -408,91 +435,39 @@ function buildComparisonVerdict(params: {
     };
   }
 
-  const leaders = [avgScoreLeader, avgCeilingLeader, hitRateLeader].filter(Boolean);
-  const countA = leaders.filter((x) => x === "A").length;
-  const countB = leaders.filter((x) => x === "B").length;
-
-  const dominantLeader = countA > countB ? "A" : countB > countA ? "B" : null;
-  const dominantLeaderName = getLeaderName(dominantLeader, teamAName, teamBName);
-  const dominantTrailName = getTrailingName(dominantLeader, teamAName, teamBName);
-
-  const allSameLeader =
-    avgScoreLeader &&
-    avgCeilingLeader &&
-    hitRateLeader &&
-    avgScoreLeader === avgCeilingLeader &&
-    avgScoreLeader === hitRateLeader;
-
-  const splitScoreVsCeiling =
-    avgScoreLeader &&
-    avgCeilingLeader &&
-    avgScoreLeader !== avgCeilingLeader;
-
-  const scoreAndConsistencyAligned =
-    avgScoreLeader &&
-    hitRateLeader &&
-    avgScoreLeader === hitRateLeader;
-
-  const scoreAndCeilingAligned =
-    avgScoreLeader &&
-    avgCeilingLeader &&
-    avgScoreLeader === avgCeilingLeader;
-
-  const avgMeaningful = avgAbs >= 0.2;
-  const ceilingMeaningful = ceilingAbs !== null && ceilingAbs >= 0.15;
-  const hitMeaningful = hitAbs !== null && hitAbs >= 2.5;
-
-  if (allSameLeader && dominantLeaderName && dominantTrailName) {
-    const tone: VerdictTone = avgAbs >= 0.5 ? "clear" : "slight";
-
+  if (scoreTone === "clear" && supportCount >= 1) {
     return {
-      tone,
-      headline:
-        tone === "clear"
-          ? `${dominantLeaderName} has a clear edge over ${dominantTrailName} right now.`
-          : `${dominantLeaderName} has the edge over ${dominantTrailName} right now.`,
+      tone: "clear",
+      headline: `${avgLeaderName} has the stronger profile right now.`,
       bullets,
-      verdict:
-        tone === "clear"
-          ? `VERDICT: ${titleCaseVerdict(dominantLeaderName)} is favored`
-          : `VERDICT: ${titleCaseVerdict(dominantLeaderName)} has the edge`,
+      verdict: `VERDICT: ${titleCaseVerdict(avgLeaderName)} is favored`,
     };
   }
 
-  if (
-    splitScoreVsCeiling &&
-    avgLeaderName &&
-    ceilingLeaderName &&
-    scoreAndConsistencyAligned &&
-    avgLeaderName === hitLeaderName
-  ) {
-    return {
-      tone: "split",
-      headline: `${avgLeaderName} leads right now, but ${ceilingLeaderName} has the higher ceiling.`,
-      bullets,
-      verdict: `VERDICT: ${titleCaseVerdict(avgLeaderName)} is safer right now, but ${titleCaseVerdict(
-        ceilingLeaderName
-      )} has more upside`,
-    };
-  }
-
-  if (scoreAndCeilingAligned && avgLeaderName && dominantTrailName) {
-    return {
-      tone: avgMeaningful || ceilingMeaningful ? "clear" : "slight",
-      headline: `${avgLeaderName} has the stronger scoring profile right now.`,
-      bullets,
-      verdict: hitMeaningful
-        ? `VERDICT: ${titleCaseVerdict(avgLeaderName)} is favored`
-        : `VERDICT: ${titleCaseVerdict(avgLeaderName)} has the edge`,
-    };
-  }
-
-  if (dominantLeaderName && dominantTrailName && (countA === 2 || countB === 2)) {
+  if (scoreTone === "slight" && supportCount === 2) {
     return {
       tone: "slight",
-      headline: `${dominantLeaderName} holds the edge overall, but this matchup has some split signals.`,
+      headline: `${avgLeaderName} holds the edge right now.`,
       bullets,
-      verdict: `VERDICT: ${titleCaseVerdict(dominantLeaderName)} has a slight edge`,
+      verdict: `VERDICT: ${titleCaseVerdict(avgLeaderName)} has the edge`,
+    };
+  }
+
+  if (scoreTone === "slight" && supportCount >= 1) {
+    return {
+      tone: "slight",
+      headline: `${avgLeaderName} has a slight edge over ${avgTrailName} right now.`,
+      bullets,
+      verdict: `VERDICT: ${titleCaseVerdict(avgLeaderName)} has a slight edge`,
+    };
+  }
+
+  if (supportCount === 2) {
+    return {
+      tone: "slight",
+      headline: `${avgLeaderName} looks slightly stronger across the full profile.`,
+      bullets,
+      verdict: `VERDICT: ${titleCaseVerdict(avgLeaderName)} has a slight edge`,
     };
   }
 
@@ -915,33 +890,35 @@ export default function ComparePage() {
   const avgCeilingLeaderName = getLeaderName(avgCeilingLeader, teamAName, teamBName);
   const hitRateLeaderName = getLeaderName(hitRateLeader, teamAName, teamBName);
 
-  const verdictBlock = useMemo(
-    () =>
-      buildComparisonVerdict({
-        ready,
-        isPremium,
-        teamAName,
-        teamBName,
-        avgScoreGap,
-        avgCeilingGap,
-        hitRateGap,
-        avgScoreLeader,
-        avgCeilingLeader,
-        hitRateLeader,
-      }),
-    [
-      ready,
-      isPremium,
-      teamAName,
-      teamBName,
-      avgScoreGap,
-      avgCeilingGap,
-      hitRateGap,
-      avgScoreLeader,
-      avgCeilingLeader,
-      hitRateLeader,
-    ]
-  );
+ const verdictBlock = useMemo(() => {
+  if (!isPremium) {
+    return null;
+  }
+
+  return buildComparisonVerdict({
+    ready,
+    isPremium,
+    teamAName,
+    teamBName,
+    avgScoreGap,
+    avgCeilingGap,
+    hitRateGap,
+    avgScoreLeader,
+    avgCeilingLeader,
+    hitRateLeader,
+  });
+}, [
+  isPremium,
+  ready,
+  teamAName,
+  teamBName,
+  avgScoreGap,
+  avgCeilingGap,
+  hitRateGap,
+  avgScoreLeader,
+  avgCeilingLeader,
+  hitRateLeader,
+]);
 
   const insightCards = useMemo(() => {
     const avgEdge =
@@ -1043,13 +1020,13 @@ export default function ComparePage() {
   );
 
   const verdictToneClasses =
-    verdictBlock.tone === "clear"
-      ? "border-teal-400/20 bg-teal-500/[0.06]"
-      : verdictBlock.tone === "split"
-      ? "border-amber-400/20 bg-amber-500/[0.06]"
-      : verdictBlock.tone === "close"
-      ? "border-white/10 bg-white/[0.03]"
-      : "border-white/10 bg-white/[0.03]";
+  verdictBlock?.tone === "clear"
+    ? "border-teal-400/20 bg-teal-500/[0.06]"
+    : verdictBlock?.tone === "split"
+    ? "border-amber-400/20 bg-amber-500/[0.06]"
+    : verdictBlock?.tone === "close"
+    ? "border-white/10 bg-white/[0.03]"
+    : "border-white/10 bg-white/[0.03]";
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100">
@@ -1085,26 +1062,70 @@ export default function ComparePage() {
           </div>
         </div>
 
-        <div className={`rounded-2xl border px-5 py-5 ${verdictToneClasses}`}>
-          <div className="text-[11px] uppercase tracking-[0.24em] text-slate-400">Top Block</div>
+        {!premiumLoading && isPremium && verdictBlock ? (
+  <div className={`rounded-2xl border px-5 py-5 ${verdictToneClasses}`}>
+    <div className="text-[11px] uppercase tracking-[0.24em] text-slate-400">Top Block</div>
 
-          <div className="mt-3 text-2xl font-bold tracking-tight text-white md:text-3xl">
-            {verdictBlock.headline}
-          </div>
+    <div className="mt-3 text-2xl font-bold tracking-tight text-white md:text-3xl">
+      {verdictBlock.headline}
+    </div>
 
-          <div className="mt-5 space-y-3">
-            {verdictBlock.bullets.map((bullet, idx) => (
-              <div key={`${bullet.icon}-${idx}`} className="flex items-start gap-3">
-                <div className="pt-0.5 text-xl">{bullet.icon}</div>
-                <div className="text-base text-slate-200 md:text-lg">{bullet.text}</div>
-              </div>
-            ))}
-          </div>
-
-          <div className="mt-6 text-xl font-extrabold text-white md:text-2xl">
-            {verdictBlock.verdict}
-          </div>
+    <div className="mt-5 space-y-3">
+      {verdictBlock.bullets.map((bullet, idx) => (
+        <div key={`${bullet.icon}-${idx}`} className="flex items-start gap-3">
+          <div className="pt-0.5 text-xl">{bullet.icon}</div>
+          <div className="text-base text-slate-200 md:text-lg">{bullet.text}</div>
         </div>
+      ))}
+    </div>
+
+    <div className="mt-6 text-xl font-extrabold text-white md:text-2xl">
+      {verdictBlock.verdict}
+    </div>
+  </div>
+) : (
+  <div className="rounded-2xl border border-teal-400/15 bg-[#131f3a]/95 px-5 py-5">
+    <div className="text-[11px] uppercase tracking-[0.24em] text-teal-300">
+      Premium Comparison
+    </div>
+
+    <div className="mt-3 text-2xl font-bold tracking-tight text-white md:text-3xl">
+      Unlock the full team-vs-team verdict
+    </div>
+
+    <div className="mt-5 space-y-3">
+      <div className="flex items-start gap-3">
+        <div className="pt-0.5 text-xl">🏆</div>
+        <div className="text-base text-slate-200 md:text-lg">
+          See who actually holds the edge right now
+        </div>
+      </div>
+
+      <div className="flex items-start gap-3">
+        <div className="pt-0.5 text-xl">🎯</div>
+        <div className="text-base text-slate-200 md:text-lg">
+          Unlock ceiling to see which team has more upside
+        </div>
+      </div>
+
+      <div className="flex items-start gap-3">
+        <div className="pt-0.5 text-xl">🔥</div>
+        <div className="text-base text-slate-200 md:text-lg">
+          Unlock consistency to see which team has been steadier
+        </div>
+      </div>
+    </div>
+
+    <div className="mt-6 flex flex-wrap gap-3">
+      <Link
+        href={lockedHref}
+        className="inline-flex items-center rounded-xl bg-gradient-to-r from-teal-400 to-cyan-300 px-4 py-2.5 text-sm font-semibold text-slate-950 shadow-[0_0_20px_rgba(45,212,191,0.28)] transition hover:scale-[1.02] hover:shadow-[0_0_30px_rgba(45,212,191,0.4)]"
+      >
+        {lockedCtaLabel}
+      </Link>
+    </div>
+  </div>
+)}
 
         <div className="mt-6 rounded-2xl border border-slate-800 bg-slate-900/50 px-4 py-3 text-sm text-slate-300">
           Compare any two teams to see who’s ahead now, who has more upside, and who has been more reliable.
