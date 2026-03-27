@@ -2,7 +2,6 @@
 
 import React, { Fragment, useEffect, useMemo, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
-import PremiumGate from "@/app/components/PremiumGate";
 import {
   ResponsiveContainer,
   CartesianGrid,
@@ -176,11 +175,7 @@ function computeAverageCeiling(rows: TeamEventRow[]) {
 }
 
 export default function CompBuilderPage() {
-  return (
-    <PremiumGate nextPath="/comp-builder">
-      <CompBuilderInner />
-    </PremiumGate>
-  );
+  return <CompBuilderInner />;
 }
 
 function CompBuilderInner() {
@@ -210,6 +205,9 @@ function CompBuilderInner() {
   const [expandedTeams, setExpandedTeams] = useState<string[]>([]);
   const [tableSortKey, setTableSortKey] = useState<TableSortKey>("avgScore");
   const [tableSortDir, setTableSortDir] = useState<"asc" | "desc">("desc");
+  const [premiumLoading, setPremiumLoading] = useState(true);
+  const [session, setSession] = useState<any>(null);
+  const [isPremium, setIsPremium] = useState(false);
 
   const toggleRole = (role: Role) => {
     setRoles((prev) =>
@@ -439,6 +437,67 @@ function CompBuilderInner() {
 
     loadRosterData();
   }, [roster]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function checkPremium() {
+      if (!supabase) {
+        if (!mounted) return;
+        setSession(null);
+        setIsPremium(false);
+        setPremiumLoading(false);
+        return;
+      }
+
+      setPremiumLoading(true);
+
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!mounted) return;
+
+      setSession(session);
+
+      if (!session?.user) {
+        setIsPremium(false);
+        setPremiumLoading(false);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("is_premium")
+        .eq("id", session.user.id)
+        .single();
+
+      if (!mounted) return;
+
+      if (error) {
+        console.error("profile fetch error:", error);
+        setIsPremium(false);
+        setPremiumLoading(false);
+        return;
+      }
+
+      setIsPremium(Boolean(data?.is_premium));
+      setPremiumLoading(false);
+    }
+
+    checkPremium();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(() => {
+      checkPremium();
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
 
   const unlock = async () => {
     setMsg("");
@@ -713,6 +772,14 @@ function CompBuilderInner() {
 
   const primaryTeam = roster.find((t) => t.id === primaryTeamId);
 
+  const lineupReady = roster.length >= 2;
+  const showPremiumResults = !premiumLoading && isPremium;
+  const shouldGateResults = lineupReady && !showPremiumResults;
+  const lockedHref = !session
+  ? "/login?next=/upgrade"
+  : "/upgrade";
+  const lockedCtaLabel = "Unlock Your Results";
+
   function splitProgramTeam(label: string) {
     const parts = label.split(" - ");
     if (parts.length <= 1) {
@@ -812,7 +879,7 @@ function CompBuilderInner() {
             </h1>
 
             <p className="text-slate-300 mt-2">
-              Add up to 6 teams and instantly compare ceiling, consistency, and scores.
+              Add up to 12 teams and instantly compare ceiling, consistency, and scores.
             </p>
           </div>
 
@@ -832,55 +899,107 @@ function CompBuilderInner() {
           */}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
-          <div className="rounded-2xl border border-white/10 bg-[#0E1530] p-4">
-            <div className="text-xs uppercase tracking-[0.2em] text-white/60 mb-3">
-              Average Event Score
+                {shouldGateResults ? (
+          <div className="mb-6 rounded-2xl border border-teal-400/15 bg-[#131f3a]/95 p-6">
+            <div className="text-[11px] uppercase tracking-[0.24em] text-teal-300">
+              Premium Comp Builder
             </div>
-            <div className="rounded-xl border border-cyan-400/20 bg-black/20 p-4">
-              <div className="text-xs text-white/60">Focus Team</div>
-              <div className="mt-1 text-3xl font-bold text-cyan-300">
-                {formatScore(primaryMetrics?.avgScore)}
-              </div>
-            </div>
-          </div>
 
-          <div className="rounded-2xl border border-white/10 bg-[#0E1530] p-4">
-            <div className="text-xs uppercase tracking-[0.2em] text-white/60 mb-3">
-              Average Ceiling Score
+            <div className="mt-3 text-2xl font-bold tracking-tight text-white md:text-3xl">
+              Your lineup is ready. Now see how it actually stacks up.
             </div>
-            <div className="rounded-xl border border-fuchsia-400/20 bg-black/20 p-4">
-              <div className="text-xs text-white/60">Focus Team</div>
-              <div className="mt-1 text-3xl font-bold text-fuchsia-300">
-                {formatScore(primaryMetrics?.ceiling)}
-              </div>
-            </div>
-          </div>
 
-          <div className="rounded-2xl border border-white/10 bg-[#0E1530] p-4">
-            <div className="text-xs uppercase tracking-[0.2em] text-white/60 mb-3">
-              Hit Zero Rate
-            </div>
-            <div className="rounded-xl border border-emerald-400/20 bg-black/20 p-4">
-              <div className="text-xs text-white/60">Focus Team</div>
-              <div className="mt-1 text-3xl font-bold text-emerald-300">
-                {formatPercent(primaryMetrics?.hitZeroRate)}
-              </div>
-            </div>
-          </div>
+            <p className="mt-3 max-w-3xl text-sm text-slate-300 md:text-base">
+              You’ve built the field. Unlock the full comp view to see who leads on
+              score, who has more upside, and which teams have been more consistent.
+            </p>
 
-          <div className="rounded-2xl border border-white/10 bg-[#0E1530] p-4">
-            <div className="text-xs uppercase tracking-[0.2em] text-white/60 mb-3">
-              Best Score
+            <div className="mt-5 grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+                <div className="text-lg">🏆</div>
+                <div className="mt-2 font-semibold text-white">Full team ranking</div>
+                <div className="mt-1 text-sm text-slate-300">
+                  See how the whole lineup orders out right now.
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+                <div className="text-lg">🎯</div>
+                <div className="mt-2 font-semibold text-white">Ceiling view</div>
+                <div className="mt-1 text-sm text-slate-300">
+                  See which teams actually have the upside to win.
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+                <div className="text-lg">🔥</div>
+                <div className="mt-2 font-semibold text-white">Consistency view</div>
+                <div className="mt-1 text-sm text-slate-300">
+                  See which teams have been steadier across performances.
+                </div>
+              </div>
             </div>
-            <div className="rounded-xl border border-amber-400/20 bg-black/20 p-4">
-              <div className="text-xs text-white/60">Focus Team</div>
-              <div className="mt-1 text-3xl font-bold text-amber-300">
-                {formatScore(primaryMetrics?.bestScore)}
+
+            <div className="mt-6 flex flex-wrap gap-3">
+              <a
+                href={lockedHref}
+                className="inline-flex items-center rounded-xl bg-gradient-to-r from-teal-400 to-cyan-300 px-4 py-2.5 text-sm font-semibold text-slate-950 shadow-[0_0_20px_rgba(45,212,191,0.28)] transition hover:scale-[1.02] hover:shadow-[0_0_30px_rgba(45,212,191,0.4)]"
+              >
+                {lockedCtaLabel}
+              </a>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
+            <div className="rounded-2xl border border-white/10 bg-[#0E1530] p-4">
+              <div className="text-xs uppercase tracking-[0.2em] text-white/60 mb-3">
+                Average Event Score
+              </div>
+              <div className="rounded-xl border border-cyan-400/20 bg-black/20 p-4">
+                <div className="text-xs text-white/60">Focus Team</div>
+                <div className="mt-1 text-3xl font-bold text-cyan-300">
+                  {formatScore(primaryMetrics?.avgScore)}
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-[#0E1530] p-4">
+              <div className="text-xs uppercase tracking-[0.2em] text-white/60 mb-3">
+                Average Ceiling Score
+              </div>
+              <div className="rounded-xl border border-fuchsia-400/20 bg-black/20 p-4">
+                <div className="text-xs text-white/60">Focus Team</div>
+                <div className="mt-1 text-3xl font-bold text-fuchsia-300">
+                  {formatScore(primaryMetrics?.ceiling)}
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-[#0E1530] p-4">
+              <div className="text-xs uppercase tracking-[0.2em] text-white/60 mb-3">
+                Hit Zero Rate
+              </div>
+              <div className="rounded-xl border border-emerald-400/20 bg-black/20 p-4">
+                <div className="text-xs text-white/60">Focus Team</div>
+                <div className="mt-1 text-3xl font-bold text-emerald-300">
+                  {formatPercent(primaryMetrics?.hitZeroRate)}
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-[#0E1530] p-4">
+              <div className="text-xs uppercase tracking-[0.2em] text-white/60 mb-3">
+                Best Score
+              </div>
+              <div className="rounded-xl border border-amber-400/20 bg-black/20 p-4">
+                <div className="text-xs text-white/60">Focus Team</div>
+                <div className="mt-1 text-3xl font-bold text-amber-300">
+                  {formatScore(primaryMetrics?.bestScore)}
+                </div>
               </div>
             </div>
           </div>
-        </div>
+        )}
 
         <div className="grid grid-cols-1 xl:grid-cols-[320px_minmax(0,1fr)] gap-6">
           <aside className="rounded-2xl border border-white/10 bg-white/5 p-4">
@@ -985,334 +1104,381 @@ function CompBuilderInner() {
             </div>
           </aside>
 
-          <section className="space-y-6">
-            <div className="rounded-2xl border border-white/10 bg-[#08122A] p-6">
-              <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
-                <div>
-                  <h2 className="text-xl font-semibold">Your Comp Dashboard</h2>
-                  <p className="text-sm text-white/60">
-                    Set a focus team to see how they stack up.
-                  </p>
+                    <section className="space-y-6">
+            {shouldGateResults ? (
+              <div className="rounded-2xl border border-white/10 bg-[#08122A] p-6">
+                <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+                  <div>
+                    <h2 className="text-xl font-semibold">Your Comp Dashboard</h2>
+                    <p className="text-sm text-white/60">
+                      Your lineup is built. Unlock premium to see the full results.
+                    </p>
+                  </div>
                 </div>
 
-                <div className="flex gap-6">
-                  <div className="flex flex-col items-start">
-                    <label className="flex items-center gap-2 text-sm leading-none">
-                      <input
-                        type="checkbox"
-                        checked={showBarScore}
-                        onChange={(e) => setShowBarScore(e.target.checked)}
-                      />
-                      Event Score
-                    </label>
-                    <div className="ml-5 mt-2 h-2 w-14 rounded-full bg-cyan-400 shadow-[0_0_10px_rgba(34,211,238,0.35)]" />
+                <div className="mt-6 rounded-xl border border-white/10 bg-black/10 p-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+                      <div className="text-sm font-medium text-white">What unlocks</div>
+                      <div className="mt-3 space-y-2 text-sm text-slate-300">
+                        <div>• Full ranking across your lineup</div>
+                        <div>• Score + ceiling comparison chart</div>
+                        <div>• Team-by-team comp table</div>
+                        <div>• Event-level drilldown</div>
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+                      <div className="text-sm font-medium text-white">Why it matters</div>
+                      <div className="mt-3 space-y-2 text-sm text-slate-300">
+                        <div>• See who is actually ahead right now</div>
+                        <div>• See who still has winning upside</div>
+                        <div>• See who has been the steadier team</div>
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="flex flex-col items-start">
-                    <label className="flex items-center gap-2 text-sm leading-none">
-                      <input
-                        type="checkbox"
-                        checked={showBarCeiling}
-                        onChange={(e) => setShowBarCeiling(e.target.checked)}
-                      />
-                      Ceiling Score
-                    </label>
-                    <div className="ml-5 mt-2 h-2 w-14 rounded-full bg-pink-400 shadow-[0_0_10px_rgba(244,114,182,0.35)]" />
+                  <div className="mt-6 flex flex-wrap gap-3">
+                    <a
+                      href={lockedHref}
+                      className="inline-flex items-center rounded-xl bg-gradient-to-r from-teal-400 to-cyan-300 px-4 py-2.5 text-sm font-semibold text-slate-950 shadow-[0_0_20px_rgba(45,212,191,0.28)] transition hover:scale-[1.02] hover:shadow-[0_0_30px_rgba(45,212,191,0.4)]"
+                    >
+                      {lockedCtaLabel}
+                    </a>
                   </div>
                 </div>
               </div>
+            ) : (
+              <>
+                <div className="rounded-2xl border border-white/10 bg-[#08122A] p-6">
+                  <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+                    <div>
+                      <h2 className="text-xl font-semibold">Your Comp Dashboard</h2>
+                      <p className="text-sm text-white/60">
+                        Set a focus team to see how they stack up.
+                      </p>
+                    </div>
 
-              <div
-                className="mt-6 rounded-xl border border-white/10 bg-black/10 p-4"
-                style={{ height: `${Math.max(360, barData.length * 68)}px` }}
-              >
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
-                    data={barData}
-                    layout="vertical"
-                    margin={{ top: 8, right: 20, left: 10, bottom: 8 }}
-                    barCategoryGap={6}
+                    <div className="flex gap-6">
+                      <div className="flex flex-col items-start">
+                        <label className="flex items-center gap-2 text-sm leading-none">
+                          <input
+                            type="checkbox"
+                            checked={showBarScore}
+                            onChange={(e) => setShowBarScore(e.target.checked)}
+                          />
+                          Event Score
+                        </label>
+                        <div className="ml-5 mt-2 h-2 w-14 rounded-full bg-cyan-400 shadow-[0_0_10px_rgba(34,211,238,0.35)]" />
+                      </div>
+
+                      <div className="flex flex-col items-start">
+                        <label className="flex items-center gap-2 text-sm leading-none">
+                          <input
+                            type="checkbox"
+                            checked={showBarCeiling}
+                            onChange={(e) => setShowBarCeiling(e.target.checked)}
+                          />
+                          Ceiling Score
+                        </label>
+                        <div className="ml-5 mt-2 h-2 w-14 rounded-full bg-pink-400 shadow-[0_0_10px_rgba(244,114,182,0.35)]" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div
+                    className="mt-6 rounded-xl border border-white/10 bg-black/10 p-4"
+                    style={{ height: `${Math.max(360, barData.length * 68)}px` }}
                   >
-                    <CartesianGrid stroke="rgba(255,255,255,0.06)" horizontal={false} />
-                    <XAxis
-                      type="number"
-                      domain={barDomain}
-                      tick={{ fill: "rgba(255,255,255,0.6)", fontSize: 12 }}
-                      axisLine={{ stroke: "rgba(255,255,255,0.12)" }}
-                      tickLine={{ stroke: "rgba(255,255,255,0.12)" }}
-                    />
-                    <YAxis
-                      type="category"
-                      dataKey="fullName"
-                      width={240}
-                      tick={(props: any) => {
-                        const { x, y, payload } = props;
-                        const fullName = String(payload?.value ?? "");
-                        const { program, team } = splitProgramTeam(fullName);
-
-                        return (
-                          <g transform={`translate(${x},${y})`}>
-                            <text
-                              x={-10}
-                              y={-2}
-                              textAnchor="end"
-                              fill="rgba(255,255,255,0.72)"
-                              fontSize="11"
-                            >
-                              {program}
-                            </text>
-                            {team && (
-                              <text
-                                x={-10}
-                                y={12}
-                                textAnchor="end"
-                                fill="rgba(255,255,255,0.92)"
-                                fontSize="12"
-                                fontWeight="600"
-                              >
-                                {team}
-                              </text>
-                            )}
-                          </g>
-                        );
-                      }}
-                      axisLine={{ stroke: "rgba(255,255,255,0.12)" }}
-                      tickLine={{ stroke: "rgba(255,255,255,0.12)" }}
-                    />
-                    <Tooltip
-                      formatter={(value, name) => [
-                        typeof value === "number" ? value.toFixed(3) : String(value ?? "--"),
-                        name === "avgScore" ? "Average Event Score" : "Average Ceiling Score",
-                      ]}
-                      labelFormatter={(label) => label}
-                      contentStyle={{
-                        backgroundColor: "#0b1220",
-                        border: "1px solid rgba(255,255,255,0.12)",
-                        borderRadius: 12,
-                        color: "#e5e7eb",
-                      }}
-                      labelStyle={{
-                        color: "#ffffff",
-                        fontWeight: 600,
-                      }}
-                      itemStyle={{
-                        color: "#cbd5f5",
-                      }}
-                    />
-
-                    {showBarScore && (
-                      <Bar
-                        dataKey="avgScore"
-                        shape={(props: any) => {
-                          const { x, y, width, height, payload } = props;
-                          const isPrimary = payload?.isPrimary;
-
-                          return (
-                            <rect
-                              x={x}
-                              y={isPrimary ? y - 2 : y}
-                              width={width}
-                              height={isPrimary ? height + 4 : height}
-                              rx={6}
-                              ry={6}
-                              fill={isPrimary ? "#67e8f9" : "#22d3ee"}
-                              stroke={isPrimary ? "#ffffff" : "none"}
-                              strokeWidth={isPrimary ? 3 : 0}
-                              style={{
-                                filter: isPrimary
-                                  ? "drop-shadow(0 0 12px rgba(34,211,238,0.9))"
-                                  : "none",
-                              }}
-                            />
-                          );
-                        }}
-                      />
-                    )}
-
-                    {showBarCeiling && (
-                      <Bar
-                        dataKey="ceiling"
-                        shape={(props: any) => {
-                          const { x, y, width, height, payload } = props;
-                          const isPrimary = payload?.isPrimary;
-
-                          return (
-                            <rect
-                              x={x}
-                              y={isPrimary ? y - 2 : y}
-                              width={width}
-                              height={isPrimary ? height + 4 : height}
-                              rx={6}
-                              ry={6}
-                              fill={isPrimary ? "#f9a8d4" : "#f472b6"}
-                              stroke={isPrimary ? "#ffffff" : "none"}
-                              strokeWidth={isPrimary ? 3 : 0}
-                              style={{
-                                filter: isPrimary
-                                  ? "drop-shadow(0 0 12px rgba(244,114,182,0.9))"
-                                  : "none",
-                              }}
-                            />
-                          );
-                        }}
-                      />
-                    )}
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-white/10 bg-[#08122A] p-6">
-              <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
-                <div>
-                  <h2 className="text-xl font-semibold">Your Comp Data</h2>
-                  <p className="text-sm text-white/60">
-                    Click each team to drill down into Event-Level data.
-                  </p>
-                </div>
-                {dataLoading && (
-                  <div className="text-sm text-white/50">Loading team data...</div>
-                )}
-              </div>
-
-              <div className="mt-6 overflow-x-auto rounded-xl border border-white/10 bg-black/10">
-                <table className="min-w-full text-sm">
-                  <thead className="bg-white/5 text-white/70">
-                    <tr>
-                      <th
-                        className="px-4 py-3 text-left cursor-pointer"
-                        onClick={() => sortTableBy("team")}
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart
+                        data={barData}
+                        layout="vertical"
+                        margin={{ top: 8, right: 20, left: 10, bottom: 8 }}
+                        barCategoryGap={6}
                       >
-                        Team
-                      </th>
-                      <th
-                        className="px-4 py-3 text-left cursor-pointer"
-                        onClick={() => sortTableBy("avgScore")}
-                      >
-                        Avg Event
-                      </th>
-                      <th
-                        className="px-4 py-3 text-left cursor-pointer"
-                        onClick={() => sortTableBy("ceiling")}
-                      >
-                        Ceiling
-                      </th>
-                      <th
-                        className="px-4 py-3 text-left cursor-pointer"
-                        onClick={() => sortTableBy("hitZeroRate")}
-                      >
-                        Hit Zero Rate
-                      </th>
-                      <th
-                        className="px-4 py-3 text-left cursor-pointer"
-                        onClick={() => sortTableBy("lastCompDate")}
-                      >
-                        Last Comp Date
-                      </th>
-                      <th
-                        className="px-4 py-3 text-left cursor-pointer"
-                        onClick={() => sortTableBy("lastCompScore")}
-                      >
-                        Last Comp Event Score
-                      </th>
-                    </tr>
-                  </thead>
+                        <CartesianGrid stroke="rgba(255,255,255,0.06)" horizontal={false} />
+                        <XAxis
+                          type="number"
+                          domain={barDomain}
+                          tick={{ fill: "rgba(255,255,255,0.6)", fontSize: 12 }}
+                          axisLine={{ stroke: "rgba(255,255,255,0.12)" }}
+                          tickLine={{ stroke: "rgba(255,255,255,0.12)" }}
+                        />
+                        <YAxis
+                          type="category"
+                          dataKey="fullName"
+                          width={240}
+                          tick={(props: any) => {
+                            const { x, y, payload } = props;
+                            const fullName = String(payload?.value ?? "");
+                            const { program, team } = splitProgramTeam(fullName);
 
-                  <tbody>
-                    {tableData.map((row) => {
-                      const expanded = expandedTeams.includes(row.teamId);
+                            return (
+                              <g transform={`translate(${x},${y})`}>
+                                <text
+                                  x={-10}
+                                  y={-2}
+                                  textAnchor="end"
+                                  fill="rgba(255,255,255,0.72)"
+                                  fontSize="11"
+                                >
+                                  {program}
+                                </text>
+                                {team && (
+                                  <text
+                                    x={-10}
+                                    y={12}
+                                    textAnchor="end"
+                                    fill="rgba(255,255,255,0.92)"
+                                    fontSize="12"
+                                    fontWeight="600"
+                                  >
+                                    {team}
+                                  </text>
+                                )}
+                              </g>
+                            );
+                          }}
+                          axisLine={{ stroke: "rgba(255,255,255,0.12)" }}
+                          tickLine={{ stroke: "rgba(255,255,255,0.12)" }}
+                        />
+                        <Tooltip
+                          formatter={(value, name) => [
+                            typeof value === "number" ? value.toFixed(3) : String(value ?? "--"),
+                            name === "avgScore" ? "Average Event Score" : "Average Ceiling Score",
+                          ]}
+                          labelFormatter={(label) => label}
+                          contentStyle={{
+                            backgroundColor: "#0b1220",
+                            border: "1px solid rgba(255,255,255,0.12)",
+                            borderRadius: 12,
+                            color: "#e5e7eb",
+                          }}
+                          labelStyle={{
+                            color: "#ffffff",
+                            fontWeight: 600,
+                          }}
+                          itemStyle={{
+                            color: "#cbd5f5",
+                          }}
+                        />
 
-                      return (
-                        <Fragment key={row.teamId}>
-                          <tr
-                            className={`border-t border-white/10 cursor-pointer ${
-                              row.teamId === primaryTeamId
-                                ? "bg-cyan-500/10 hover:bg-cyan-500/20"
-                                : "hover:bg-white/5"
-                            }`}
-                            onClick={() => toggleExpanded(row.teamId)}
-                          >
-                            <td className="px-4 py-3">
-                              <div className="flex items-center gap-2">
-                                <div
-                                  className="h-2.5 w-2.5 rounded-full"
-                                  style={{ backgroundColor: row.color }}
+                        {showBarScore && (
+                          <Bar
+                            dataKey="avgScore"
+                            shape={(props: any) => {
+                              const { x, y, width, height, payload } = props;
+                              const isPrimary = payload?.isPrimary;
+
+                              return (
+                                <rect
+                                  x={x}
+                                  y={isPrimary ? y - 2 : y}
+                                  width={width}
+                                  height={isPrimary ? height + 4 : height}
+                                  rx={6}
+                                  ry={6}
+                                  fill={isPrimary ? "#67e8f9" : "#22d3ee"}
+                                  stroke={isPrimary ? "#ffffff" : "none"}
+                                  strokeWidth={isPrimary ? 3 : 0}
+                                  style={{
+                                    filter: isPrimary
+                                      ? "drop-shadow(0 0 12px rgba(34,211,238,0.9))"
+                                      : "none",
+                                  }}
                                 />
-                                <span className="font-medium text-white">{row.team}</span>
-                              </div>
-                            </td>
+                              );
+                            }}
+                          />
+                        )}
 
-                            <td className="px-4 py-3 text-cyan-300">
-                              {row.avgScore ? row.avgScore.toFixed(3) : "--"}
-                            </td>
+                        {showBarCeiling && (
+                          <Bar
+                            dataKey="ceiling"
+                            shape={(props: any) => {
+                              const { x, y, width, height, payload } = props;
+                              const isPrimary = payload?.isPrimary;
 
-                            <td className="px-4 py-3 text-pink-300">
-                              {row.ceiling ? row.ceiling.toFixed(3) : "--"}
-                            </td>
+                              return (
+                                <rect
+                                  x={x}
+                                  y={isPrimary ? y - 2 : y}
+                                  width={width}
+                                  height={isPrimary ? height + 4 : height}
+                                  rx={6}
+                                  ry={6}
+                                  fill={isPrimary ? "#f9a8d4" : "#f472b6"}
+                                  stroke={isPrimary ? "#ffffff" : "none"}
+                                  strokeWidth={isPrimary ? 3 : 0}
+                                  style={{
+                                    filter: isPrimary
+                                      ? "drop-shadow(0 0 12px rgba(244,114,182,0.9))"
+                                      : "none",
+                                  }}
+                                />
+                              );
+                            }}
+                          />
+                        )}
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
 
-                            <td className="px-4 py-3 text-emerald-300">
-                              {Math.round(row.hitZeroRate)}%
-                            </td>
+                <div className="rounded-2xl border border-white/10 bg-[#08122A] p-6">
+                  <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+                    <div>
+                      <h2 className="text-xl font-semibold">Your Comp Data</h2>
+                      <p className="text-sm text-white/60">
+                        Click each team to drill down into Event-Level data.
+                      </p>
+                    </div>
+                    {dataLoading && (
+                      <div className="text-sm text-white/50">Loading team data...</div>
+                    )}
+                  </div>
 
-                            <td className="px-4 py-3 text-white/80">
-                              {formatDate(row.lastCompDate)}
-                            </td>
+                  <div className="mt-6 overflow-x-auto rounded-xl border border-white/10 bg-black/10">
+                    <table className="min-w-full text-sm">
+                      <thead className="bg-white/5 text-white/70">
+                        <tr>
+                          <th
+                            className="px-4 py-3 text-left cursor-pointer"
+                            onClick={() => sortTableBy("team")}
+                          >
+                            Team
+                          </th>
+                          <th
+                            className="px-4 py-3 text-left cursor-pointer"
+                            onClick={() => sortTableBy("avgScore")}
+                          >
+                            Avg Event
+                          </th>
+                          <th
+                            className="px-4 py-3 text-left cursor-pointer"
+                            onClick={() => sortTableBy("ceiling")}
+                          >
+                            Ceiling
+                          </th>
+                          <th
+                            className="px-4 py-3 text-left cursor-pointer"
+                            onClick={() => sortTableBy("hitZeroRate")}
+                          >
+                            Hit Zero Rate
+                          </th>
+                          <th
+                            className="px-4 py-3 text-left cursor-pointer"
+                            onClick={() => sortTableBy("lastCompDate")}
+                          >
+                            Last Comp Date
+                          </th>
+                          <th
+                            className="px-4 py-3 text-left cursor-pointer"
+                            onClick={() => sortTableBy("lastCompScore")}
+                          >
+                            Last Comp Event Score
+                          </th>
+                        </tr>
+                      </thead>
 
-                            <td className="px-4 py-3 text-amber-300">
-                              {row.lastCompScore ? row.lastCompScore.toFixed(3) : "--"}
-                            </td>
-                          </tr>
+                      <tbody>
+                        {tableData.map((row) => {
+                          const expanded = expandedTeams.includes(row.teamId);
 
-                          {expanded && (
-                            <tr className="border-t border-white/10 bg-white/[0.03]">
-                              <td colSpan={6} className="px-4 py-4">
-                                <div className="overflow-x-auto rounded-lg border border-white/10 bg-black/20">
-                                  <table className="min-w-full text-xs">
-                                    <thead className="bg-white/5 text-white/60">
-                                      <tr>
-                                        <th className="px-3 py-2 text-left">Event Name</th>
-                                        <th className="px-3 py-2 text-left">Event Date</th>
-                                        <th className="px-3 py-2 text-left">Event Score</th>
-                                        <th className="px-3 py-2 text-left">
-                                          Event Ceiling Score
-                                        </th>
-                                      </tr>
-                                    </thead>
+                          return (
+                            <Fragment key={row.teamId}>
+                              <tr
+                                className={`border-t border-white/10 cursor-pointer ${
+                                  row.teamId === primaryTeamId
+                                    ? "bg-cyan-500/10 hover:bg-cyan-500/20"
+                                    : "hover:bg-white/5"
+                                }`}
+                                onClick={() => toggleExpanded(row.teamId)}
+                              >
+                                <td className="px-4 py-3">
+                                  <div className="flex items-center gap-2">
+                                    <div
+                                      className="h-2.5 w-2.5 rounded-full"
+                                      style={{ backgroundColor: row.color }}
+                                    />
+                                    <span className="font-medium text-white">{row.team}</span>
+                                  </div>
+                                </td>
 
-                                    <tbody>
-                                      {row.comps.map((comp) => (
-                                        <tr key={comp.id} className="border-t border-white/10">
-                                          <td className="px-3 py-2 text-white/85">
-                                            {comp.eventName}
-                                          </td>
-                                          <td className="px-3 py-2 text-white/70">
-                                            {formatDate(comp.eventDate)}
-                                          </td>
-                                          <td className="px-3 py-2 text-cyan-300">
-                                            {comp.eventScore != null
-                                              ? comp.eventScore.toFixed(3)
-                                              : "--"}
-                                          </td>
-                                          <td className="px-3 py-2 text-pink-300">
-                                            {comp.eventCeilingScore != null
-                                              ? comp.eventCeilingScore.toFixed(3)
-                                              : "--"}
-                                          </td>
-                                        </tr>
-                                      ))}
-                                    </tbody>
-                                  </table>
-                                </div>
-                              </td>
-                            </tr>
-                          )}
-                        </Fragment>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+                                <td className="px-4 py-3 text-cyan-300">
+                                  {row.avgScore ? row.avgScore.toFixed(3) : "--"}
+                                </td>
+
+                                <td className="px-4 py-3 text-pink-300">
+                                  {row.ceiling ? row.ceiling.toFixed(3) : "--"}
+                                </td>
+
+                                <td className="px-4 py-3 text-emerald-300">
+                                  {Math.round(row.hitZeroRate)}%
+                                </td>
+
+                                <td className="px-4 py-3 text-white/80">
+                                  {formatDate(row.lastCompDate)}
+                                </td>
+
+                                <td className="px-4 py-3 text-amber-300">
+                                  {row.lastCompScore ? row.lastCompScore.toFixed(3) : "--"}
+                                </td>
+                              </tr>
+
+                              {expanded && (
+                                <tr className="border-t border-white/10 bg-white/[0.03]">
+                                  <td colSpan={6} className="px-4 py-4">
+                                    <div className="overflow-x-auto rounded-lg border border-white/10 bg-black/20">
+                                      <table className="min-w-full text-xs">
+                                        <thead className="bg-white/5 text-white/60">
+                                          <tr>
+                                            <th className="px-3 py-2 text-left">Event Name</th>
+                                            <th className="px-3 py-2 text-left">Event Date</th>
+                                            <th className="px-3 py-2 text-left">Event Score</th>
+                                            <th className="px-3 py-2 text-left">
+                                              Event Ceiling Score
+                                            </th>
+                                          </tr>
+                                        </thead>
+
+                                        <tbody>
+                                          {row.comps.map((comp) => (
+                                            <tr key={comp.id} className="border-t border-white/10">
+                                              <td className="px-3 py-2 text-white/85">
+                                                {comp.eventName}
+                                              </td>
+                                              <td className="px-3 py-2 text-white/70">
+                                                {formatDate(comp.eventDate)}
+                                              </td>
+                                              <td className="px-3 py-2 text-cyan-300">
+                                                {comp.eventScore != null
+                                                  ? comp.eventScore.toFixed(3)
+                                                  : "--"}
+                                              </td>
+                                              <td className="px-3 py-2 text-pink-300">
+                                                {comp.eventCeilingScore != null
+                                                  ? comp.eventCeilingScore.toFixed(3)
+                                                  : "--"}
+                                              </td>
+                                            </tr>
+                                          ))}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  </td>
+                                </tr>
+                              )}
+                            </Fragment>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </>
+            )}
           </section>
         </div>
       </div>
