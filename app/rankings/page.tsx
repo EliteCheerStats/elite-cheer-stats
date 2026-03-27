@@ -51,7 +51,8 @@ function titleCase(s: string) {
 type SizeOpt = "Any" | "X-Small" | "Small" | "Medium" | "Large";
 type D2Mode = "Any" | "D2Only" | "NonD2Only";
 type FlexMode = "Any" | "FlexOnly" | "NonFlexOnly";
-type LevelOpt = "All" | "L1" | "L2" | "L3" | "L4" | "L5" | "L6";
+type CoedMode = "Any" | "CoedOnly" | "NonCoedOnly";
+type LevelOpt = "All" | "L1" | "L2" | "L3" | "L4" | "L4.2" | "L5" | "L6";
 type AgeOpt = "All" | "Tiny" | "Mini" | "Youth" | "Junior" | "Senior";
 
 type Filters = {
@@ -60,6 +61,7 @@ type Filters = {
   age: AgeOpt;
   d2Mode: D2Mode;
   flexMode: FlexMode;
+  coedMode: CoedMode;
   size: SizeOpt;
   requireTwoPlus: boolean; // default ON
 };
@@ -70,6 +72,7 @@ const DEFAULT_FILTERS: Filters = {
   age: "All",
   d2Mode: "Any",
   flexMode: "Any",
+  coedMode: "Any",
   size: "Any",
   requireTwoPlus: true,
 };
@@ -79,9 +82,9 @@ const lastUpdated = new Date().toLocaleDateString();
 
 // ---------- Parsing helpers ----------
 function inferLevelFromDivision(divisionRaw: string): string | null {
-  const d = String(divisionRaw ?? "");
-  const m = d.match(/^\s*L\s*([1-6])\b/i) || d.match(/^\s*L([1-6])\b/i);
-  return m ? `L${m[1]}` : null;
+  const d = String(divisionRaw ?? "").trim();
+  const m = d.match(/^\s*(L\d+(?:\.\d+)?)/i);
+  return m ? m[1].toUpperCase() : null;
 }
 
 function inferAgeFromDivision(divisionRaw: string): string | null {
@@ -130,6 +133,11 @@ function inferIsFlexFromDivision(divisionRaw: string): boolean {
   return d.includes(" flex");
 }
 
+function inferIsCoedFromDivision(divisionRaw: string): boolean {
+  const d = normalize(divisionRaw);
+  return /\bcoed\b/.test(d);
+}
+
 function parseMeta(r: Row) {
   const division = String(pick(r, ["division"], ""));
   const level = inferLevelFromDivision(division);
@@ -139,6 +147,7 @@ function parseMeta(r: Row) {
 
   const isD2 = r.is_d2 !== undefined && r.is_d2 !== null ? Boolean(r.is_d2) : inferIsD2FromDivision(division);
   const isFlex = r.is_flex !== undefined && r.is_flex !== null ? Boolean(r.is_flex) : inferIsFlexFromDivision(division);
+  const isCoed = r.is_coed !== undefined && r.is_coed !== null ? Boolean(r.is_coed) : inferIsCoedFromDivision(division);
 
   const size =
     cleanSizeAny(r.size_effective) ||
@@ -146,7 +155,7 @@ function parseMeta(r: Row) {
     cleanSizeAny(pick(r, ["size", "size_bucket"], "")) ||
     inferSizeFromDivision(division);
 
-  return { division, level, age, isD2, isFlex, size };
+  return { division, level, age, isD2, isFlex, isCoed, size };
 }
 
 function isSupportedForRankings(meta: {
@@ -158,17 +167,24 @@ function isSupportedForRankings(meta: {
   const d = normalize(meta.division);
 
   if (meta.level === "L7") return false;
-  if (d.includes("coed")) return false;
   if (meta.age === "U16" || meta.age === "U18" || meta.age === "Open") return false;
+  if (d.includes("u16") || d.includes("u18") || d.includes(" open")) return false;
   if (meta.size === "X-Large") return false;
 
   return true;
 }
 
-function buildTrackKey(meta: { level: string | null; age: string | null; isFlex: boolean; isD2: boolean }) {
+function buildTrackKey(meta: {
+  level: string | null;
+  age: string | null;
+  isFlex: boolean;
+  isD2: boolean;
+  isCoed: boolean;
+}) {
   const parts: string[] = [];
   if (meta.level) parts.push(meta.level);
   if (meta.age) parts.push(meta.age);
+  if (meta.isCoed) parts.push("Coed");
   if (meta.isFlex) parts.push("Flex");
   if (meta.isD2) parts.push("D2");
   return parts.join(" ").trim();
@@ -198,7 +214,7 @@ export default function RankingsPage() {
   const eventScoreKeys = ["event_score", "event_total", "total_score", "score"];
   const eventNameKeys = ["event_name", "event", "event_title", "competition_name", "competition", "event_display_name"];
   const eventIdKeys = ["event_id", "eventId", "competition_id"];
-  const weekendKeys = ["event_start_date", "weekend"];
+  const weekendKeys = ["event_start_date", "weekend_date", "weekend"];
   const sourceUrlKeys = ["source_url", "sourceUrl", "url"];
 
   const setFilter = <K extends keyof Filters>(key: K, value: Filters[K]) => {
@@ -278,10 +294,6 @@ export default function RankingsPage() {
         .gte("weekend_date", SEASON_START)
         .order("weekend_date", { ascending: false });
 
-      if (filters.level !== "All") {
-        q = q.ilike("division", `${filters.level}%`);
-      }
-
       const s = filters.search.trim();
       if (s.length >= 2) {
         const esc = s.replace(/,/g, "");
@@ -307,7 +319,7 @@ export default function RankingsPage() {
     return () => {
       cancelled = true;
     };
-  }, [filters.level, filters.search]);
+  }, [filters.search]);
 
   const filteredRows = useMemo(() => {
     const q = filters.search.trim().toLowerCase();
@@ -316,6 +328,8 @@ export default function RankingsPage() {
     return rows.filter((r) => {
       const meta = parseMeta(r);
       if (!isSupportedForRankings(meta)) return false;
+
+      if (filters.level !== "All" && meta.level !== filters.level) return false;
 
       if (filters.age !== "All") {
         const rowAge = String(r.age_bucket ?? "");
@@ -332,6 +346,9 @@ export default function RankingsPage() {
       if (filters.flexMode === "FlexOnly" && !meta.isFlex) return false;
       if (filters.flexMode === "NonFlexOnly" && meta.isFlex) return false;
 
+      if (filters.coedMode === "CoedOnly" && !meta.isCoed) return false;
+      if (filters.coedMode === "NonCoedOnly" && meta.isCoed) return false;
+
       if (q) {
         const eventName = String(pick(r, eventNameKeys, "")).toLowerCase();
         const program = String(pick(r, programKeys, "")).toLowerCase();
@@ -342,7 +359,7 @@ export default function RankingsPage() {
 
       return true;
     });
-  }, [rows, filters.age, filters.d2Mode, filters.flexMode, filters.search]);
+  }, [rows, filters.level, filters.age, filters.d2Mode, filters.flexMode, filters.coedMode, filters.search]);
 
   const teamRankings = useMemo(() => {
     type Agg = {
@@ -369,8 +386,8 @@ export default function RankingsPage() {
       const programId = String(r.program_id ?? "").trim();
 
       const groupKey = teamId
-        ? teamId
-        : `${programId || normalize(program)}__${normalize(team)}`;
+        ? `${teamId}__${track}`
+        : `${programId || normalize(program)}__${normalize(team)}__${track}`;
 
       const score = toNum(pick(r, eventScoreKeys, 0));
 
@@ -444,10 +461,11 @@ export default function RankingsPage() {
   const ageOptions: AgeOpt[] = ["All", "Tiny", "Mini", "Youth", "Junior", "Senior"];
 
   const rankingLabel = [
-    filters.level !== "All" ? filters.level.replace("L", "Level ") : null,
+    filters.level !== "All" ? filters.level.replace(/^L/, "Level ") : null,
     filters.age !== "All" ? filters.age : null,
+    filters.coedMode === "CoedOnly" ? "Coed" : filters.coedMode === "NonCoedOnly" ? "Non-Coed" : null,
     filters.flexMode === "FlexOnly" ? "Flex" : null,
-    filters.d2Mode === "D2Only" ? "- D2" : null,
+    filters.d2Mode === "D2Only" ? "D2" : null,
     filters.size !== "Any" ? filters.size : null,
   ]
     .filter(Boolean)
@@ -508,13 +526,17 @@ export default function RankingsPage() {
             <span className="text-xs text-slate-300">Level</span>
             <select
               value={filters.level}
-              onChange={(e) => setFilter("level", e.target.value as any)}
+              onChange={(e) => setFilter("level", e.target.value as Filters["level"])}
               className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-slate-100 outline-none"
             >
               <option value="All">All</option>
-              {[1, 2, 3, 4, 5, 6].map((n) => (
-                <option key={n} value={`L${n}`}>{`L${n}`}</option>
-              ))}
+              <option value="L1">L1</option>
+              <option value="L2">L2</option>
+              <option value="L3">L3</option>
+              <option value="L4">L4</option>
+              <option value="L4.2">L4.2</option>
+              <option value="L5">L5</option>
+              <option value="L6">L6</option>
             </select>
           </label>
 
@@ -522,7 +544,7 @@ export default function RankingsPage() {
             <span className="text-xs text-slate-300">Age</span>
             <select
               value={filters.age}
-              onChange={(e) => setFilter("age", e.target.value as any)}
+              onChange={(e) => setFilter("age", e.target.value as Filters["age"])}
               className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-slate-100 outline-none"
             >
               {ageOptions.map((a) => (
@@ -537,7 +559,7 @@ export default function RankingsPage() {
             <span className="text-xs text-slate-300">D2</span>
             <select
               value={filters.d2Mode}
-              onChange={(e) => setFilter("d2Mode", e.target.value as any)}
+              onChange={(e) => setFilter("d2Mode", e.target.value as Filters["d2Mode"])}
               className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-slate-100 outline-none"
             >
               <option value="Any">Any</option>
@@ -550,7 +572,7 @@ export default function RankingsPage() {
             <span className="text-xs text-slate-300">Flex</span>
             <select
               value={filters.flexMode}
-              onChange={(e) => setFilter("flexMode", e.target.value as any)}
+              onChange={(e) => setFilter("flexMode", e.target.value as Filters["flexMode"])}
               className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-slate-100 outline-none"
             >
               <option value="Any">Any</option>
@@ -589,12 +611,12 @@ export default function RankingsPage() {
           </div>
         </div>
 
-        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <label className="grid gap-1">
             <span className="text-xs text-slate-300">Size</span>
             <select
               value={filters.size}
-              onChange={(e) => setFilter("size", e.target.value as any)}
+              onChange={(e) => setFilter("size", e.target.value as Filters["size"])}
               className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-slate-100 outline-none"
             >
               <option value="Any">Any</option>
@@ -604,6 +626,23 @@ export default function RankingsPage() {
               <option value="Large">Large</option>
             </select>
           </label>
+
+          <label className="grid gap-1">
+            <span className="text-xs text-slate-300">Coed</span>
+            <select
+              value={filters.coedMode}
+              onChange={(e) => setFilter("coedMode", e.target.value as Filters["coedMode"])}
+              className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-slate-100 outline-none"
+            >
+              <option value="Any">Any</option>
+              <option value="CoedOnly">Coed</option>
+              <option value="NonCoedOnly">Non-Coed</option>
+            </select>
+          </label>
+
+          <div className="flex items-end">
+            <div className="text-xs text-slate-400">Updated: {lastUpdated}</div>
+          </div>
         </div>
       </div>
 
