@@ -439,65 +439,63 @@ function CompBuilderInner() {
   }, [roster]);
 
   useEffect(() => {
-    let mounted = true;
+  let mounted = true;
 
-    async function checkPremium() {
-      if (!supabase) {
-        if (!mounted) return;
-        setSession(null);
-        setIsPremium(false);
-        setPremiumLoading(false);
-        return;
-      }
-
-      setPremiumLoading(true);
-
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
+  async function checkPremium() {
+    if (!supabase) {
       if (!mounted) return;
-
-      setSession(session);
-
-      if (!session?.user) {
-        setIsPremium(false);
-        setPremiumLoading(false);
-        return;
-      }
-
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("is_premium")
-        .eq("id", session.user.id)
-        .single();
-
-      if (!mounted) return;
-
-      if (error) {
-        console.error("profile fetch error:", error);
-        setIsPremium(false);
-        setPremiumLoading(false);
-        return;
-      }
-
-      setIsPremium(Boolean(data?.is_premium));
+      setSession(null);
+      setIsPremium(false);
       setPremiumLoading(false);
+      return;
     }
 
-    checkPremium();
+    setPremiumLoading(true);
 
     const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(() => {
-      checkPremium();
-    });
+      data: { session },
+    } = await supabase.auth.getSession();
 
-    return () => {
-      mounted = false;
-      subscription.unsubscribe();
-    };
-  }, []);
+    if (!mounted) return;
+
+    setSession(session);
+
+    if (!session?.user) {
+      setIsPremium(false);
+      setPremiumLoading(false);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("is_premium")
+      .eq("id", session.user.id)
+      .single();
+
+    if (!mounted) return;
+
+    if (error) {
+      console.error("profile fetch error:", error);
+      setIsPremium(false);
+      setPremiumLoading(false);
+      return;
+    }
+
+    setIsPremium(Boolean(data?.is_premium));
+    setPremiumLoading(false);
+  }
+
+  checkPremium();
+
+  const authListener = supabase?.auth.onAuthStateChange(() => {
+    checkPremium();
+  });
+
+  return () => {
+    mounted = false;
+    authListener?.data.subscription.unsubscribe();
+  };
+}, []);
 
   const unlock = async () => {
     setMsg("");
