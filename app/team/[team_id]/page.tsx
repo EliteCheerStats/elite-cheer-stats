@@ -392,7 +392,7 @@ console.table(
 
     const avg = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : null;
     const best = scores.length ? Math.max(...scores) : null;
-
+    const displayScore = avg !== null ? avg.toFixed(1) : null;
     const events = new Set(filtered.map((r) => String(r.event_name ?? r.event_id ?? ""))).size;
 
     return { rows: filtered.length, events, avg, best };
@@ -419,9 +419,26 @@ console.table(
             <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight">
               {header.title}
             </h1>
-            <p className="mt-2 text-slate-300">
-              Filter results by weekend and level. Your core numbers update instantly.
-            </p>
+        <p className="mt-2 text-slate-300">
+  {stats.avg !== null
+    ? `This team is scoring ${stats.avg.toFixed(1)} — top teams are pushing 96+ 👀`
+    : "Filter results by weekend and level. Your core numbers update instantly."}
+</p>
+<div className="flex gap-3 mt-3">
+    <Link
+      href="/compare"
+      className="bg-teal-500/10 border border-teal-400 text-teal-300 hover:bg-teal-500/20 px-4 py-2 rounded-lg font-semibold transition"
+    >
+      Compare This Team →
+    </Link>
+
+    <Link
+      href="/comp-builder"
+      className="border border-teal-400 text-teal-300 hover:bg-teal-500/10 px-4 py-2 rounded-lg font-semibold transition"
+    >
+      Build Lineup
+    </Link>
+  </div>
           </div>
 
           <div className="flex flex-wrap gap-2">
@@ -444,11 +461,11 @@ console.table(
           </div>
 
           <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-            <div className="text-xs uppercase tracking-wide text-slate-400">Best</div>
+            <div className="text-xs uppercase tracking-wide text-slate-400">Top Event Score</div>
             <div className="mt-2 text-2xl font-extrabold text-teal-300">
               {loading ? "—" : (stats.best?.toFixed(3) ?? "—")}
             </div>
-            <div className="mt-1 text-xs text-slate-400">Peak event score</div>
+            <div className="mt-1 text-xs text-slate-400">You're not seeing their true ceiling 👀</div>
           </div>
 
           {!premiumLoading && isPremium ? (

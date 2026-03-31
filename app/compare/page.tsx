@@ -510,6 +510,8 @@ export default function ComparePage() {
   const teamAName = buildTeamName(teamA);
   const teamBName = buildTeamName(teamB);
 
+
+
   const lockedHref = session?.user ? "/upgrade" : "/login";
   const lockedCtaLabel = session?.user ? "Upgrade to Premium" : "Create Account";
 
@@ -854,6 +856,24 @@ export default function ComparePage() {
     };
   }, [eventsB, perfB, seriesB]);
 
+const teamA_score = statsA?.avgScore ?? null;
+const teamB_score = statsB?.avgScore ?? null;
+
+const diff =
+  teamA_score != null && teamB_score != null
+    ? Math.abs(teamA_score - teamB_score)
+    : null;
+
+const getClosenessLabel = (diff: number) => {
+  if (diff < 0.3) return "This is basically a toss-up 👀";
+  if (diff < 0.75) return "These teams are extremely close 👀";
+  if (diff < 1.5) return "These teams are separated by about a point 👀";
+  if (diff < 3) return "There’s a noticeable gap — but it’s not over 👀";
+  return "Score gives one team the edge — but upside and consistency still matter 👀";
+};
+
+const closenessLabel = teamA && teamB && diff != null ? getClosenessLabel(diff) : null;
+
   const chartData = useMemo(() => {
     if (!teamA || !teamB) return [];
     return mergeSeries("teamA", "teamB", seriesA, seriesB);
@@ -959,13 +979,21 @@ export default function ComparePage() {
 
     return [
       {
-        title: "Average Score",
-        icon: "🏆",
-        leader: avgScoreLeaderName ?? "—",
-        edge: avgEdge,
-        detail: avgDetail,
-        locked: false,
-      },
+  title: "Average Score",
+  icon: "🏆",
+  leader: !ready
+  ? "Select two teams to compare"
+  : closenessLabel ?? "Score comparison unavailable",
+  edge:
+    diff != null
+      ? diff < 0.2
+        ? "< 0.2 pts"
+        : diff < 1
+        ? "< 1 pt"
+        : `~${diff.toFixed(1)} pts`
+      : "—",
+  locked: false,
+},
       {
         title: "Winning Potential",
         icon: "🎯",
@@ -1001,6 +1029,8 @@ export default function ComparePage() {
     hitRateGap,
     hitRateLeaderName,
     ready,
+    diff,
+  closenessLabel,
   ]);
 
   const hitZeroBarData = useMemo(
@@ -1090,28 +1120,28 @@ export default function ComparePage() {
     </div>
 
     <div className="mt-3 text-2xl font-bold tracking-tight text-white md:text-3xl">
-      Unlock the full team-vs-team verdict
+      You're missing what actually decides this matchup 👀
     </div>
 
     <div className="mt-5 space-y-3">
       <div className="flex items-start gap-3">
         <div className="pt-0.5 text-xl">🏆</div>
         <div className="text-base text-slate-200 md:text-lg">
-          See who actually holds the edge right now
+          See who actually wins if both teams hit  
         </div>
       </div>
 
       <div className="flex items-start gap-3">
         <div className="pt-0.5 text-xl">🎯</div>
         <div className="text-base text-slate-200 md:text-lg">
-          Unlock ceiling to see which team has more upside
+          See which team has the higher ceiling
         </div>
       </div>
 
       <div className="flex items-start gap-3">
         <div className="pt-0.5 text-xl">🔥</div>
         <div className="text-base text-slate-200 md:text-lg">
-          Unlock consistency to see which team has been steadier
+          See who is more consistent under pressure
         </div>
       </div>
     </div>
@@ -1128,7 +1158,7 @@ export default function ComparePage() {
 )}
 
         <div className="mt-6 rounded-2xl border border-slate-800 bg-slate-900/50 px-4 py-3 text-sm text-slate-300">
-          Compare any two teams to see who’s ahead now, who has more upside, and who has been more reliable.
+          Compare any two teams to see how close they are — and what score alone misses.
         </div>
 
         <div className="mt-6 grid gap-4 lg:grid-cols-2">
@@ -1186,6 +1216,8 @@ export default function ComparePage() {
         </div>
 
         <div className="mt-8 grid gap-4 md:grid-cols-3">
+
+         
           <StatCard
             title="Average Score"
             leftColor={RED}
@@ -1232,10 +1264,9 @@ export default function ComparePage() {
 
         {!premiumLoading && !isPremium && ready && (
           <div className="mt-6 rounded-2xl border border-teal-400/15 bg-[#131f3a]/95 p-5 text-center">
-            <div className="text-lg font-bold text-white">Score is only the surface.</div>
+            <div className="text-lg font-bold text-white">Score alone isn’t the full story.</div>
             <div className="mt-2 text-sm text-white/75">
-              Unlock ceiling, hit zero rate, and the full side-by-side edge to see what really
-              separates these teams.
+              Unlock ceiling, hit zero rate, and the side-by-side edge that actually separates these teams.
             </div>
 
             <div className="mt-4 flex justify-center">
@@ -1481,7 +1512,7 @@ export default function ComparePage() {
         {!premiumLoading && !isPremium && ready && (
           <div className="mt-8 rounded-2xl border border-white/10 bg-white/[0.03] p-5 text-center">
             <div className="text-base font-semibold text-white">
-              There’s more separating these teams than average score.
+              Average score is only part of the picture.
             </div>
             <div className="mt-2 text-sm text-slate-400">
               Unlock ceiling, consistency, and the deeper edge to see what it really takes to close

@@ -78,7 +78,7 @@ const DEFAULT_FILTERS: Filters = {
 };
 
 const SEASON_START = "2025-12-01";
-const lastUpdated = new Date().toLocaleDateString();
+
 
 // ---------- Parsing helpers ----------
 function inferLevelFromDivision(divisionRaw: string): string | null {
@@ -482,18 +482,41 @@ export default function RankingsPage() {
     <main className="space-y-6">
       <div className="flex items-end justify-between gap-4">
         <div>
-          <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight text-slate-100">
-            Rankings
-          </h1>
-          <p className="mt-2 text-slate-300">
-            Season average event score per team (since{" "}
-            <span className="font-semibold text-slate-200">{SEASON_START}</span>).
-          </p>
+  <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight text-slate-100">
+    Rankings
+  </h1>
 
-          <p className="mt-1 text-xs text-slate-400">
-            Scores sourced from Varsity competition results.
-          </p>
-        </div>
+  {/* 🔥 NEW PRESSURE LINE */}
+  <p className="mt-2 text-sm text-slate-300">
+    Top 10 is just the starting point — teams ranked 11–20 are separating fast this week.
+  </p>
+
+  {/* 🔥 NEW CTA ROW */}
+  <div className="mt-3 flex flex-wrap items-center gap-3">
+  <Link
+    href="/compare"
+    className="inline-flex items-center justify-center rounded-xl border border-teal-400/40 bg-teal-400/10 px-5 py-2 text-sm font-semibold text-teal-300 hover:bg-teal-400/20 transition-colors"
+  >
+    Compare Teams →
+  </Link>
+
+  <Link
+    href="/comp-builder"
+    className="inline-flex items-center justify-center rounded-xl border border-teal-400/40 bg-teal-400/10 px-5 py-2 text-sm font-semibold text-teal-300 hover:bg-teal-400/20 transition-colors"
+  >
+    Build Lineup
+  </Link>
+</div>
+  {/* EXISTING TEXT (moved down) */}
+  <p className="mt-4 text-slate-300">
+    Season average event score per team (since{" "}
+    <span className="font-semibold text-slate-200">{SEASON_START}</span>).
+  </p>
+
+  <p className="mt-1 text-xs text-slate-400">
+    Scores sourced from Varsity competition results.
+  </p>
+</div>
 
         <div className="flex items-center gap-3">
           <div className="text-xs text-slate-400">
@@ -640,9 +663,7 @@ export default function RankingsPage() {
             </select>
           </label>
 
-          <div className="flex items-end">
-            <div className="text-xs text-slate-400">Updated: {lastUpdated}</div>
-          </div>
+
         </div>
       </div>
 
@@ -688,7 +709,7 @@ export default function RankingsPage() {
                   href={rankingsCtaHref}
                   className="rounded-md bg-teal-400 px-4 py-2 text-sm font-semibold text-slate-900 hover:opacity-90"
                 >
-                  {session?.user ? "Upgrade to Premium" : "Create Account"}
+                  {session?.user ? "Unlock Full Rankings" : "Create Account"}
                 </Link>
               ) : null}
             </div>
@@ -747,9 +768,17 @@ export default function RankingsPage() {
                       </>
                     ) : (
                       <>
-                        <td className="px-3 py-3 text-slate-500">Almost Top 10...👀</td>
-                        <td className="px-3 py-3 text-slate-500">••••••••••</td>
-                        <td className="px-3 py-3 text-slate-500">••••••••••</td>
+                        <td className="px-3 py-3 text-slate-400 font-medium">
+  {idx < 3
+    ? "Teams 11–20 are closing fast 👀"
+    : idx < 6
+    ? "The gap is tighter than you think 👀"
+    : idx < 8
+    ? "This could flip this weekend 👀"
+    : "You don’t have the full picture yet 🔒"}
+</td>
+                        <td className="px-3 py-3 text-slate-500">92.8 — 96.1</td>
+                        <td className="px-3 py-3 text-slate-500">↗ trending</td>
                         <td className="px-3 py-3 text-right text-slate-500">•••••</td>
                         <td className="px-3 py-3 text-right text-slate-500">••</td>
                       </>
@@ -762,18 +791,18 @@ export default function RankingsPage() {
                     <td colSpan={6} className="px-4 py-6">
                       <div className="rounded-2xl border border-white/10 bg-[#131f3a]/95 p-5 text-center">
                         <div className="text-lg font-bold text-white">
-                          You’re probably just outside the Top 10 👀
-                        </div>
-                        <div className="mt-2 text-sm text-white/70">
-                          Most teams think they’re Top 10… they’re not. See where your team actually ranks.
-                        </div>
+  Top 10 is just the starting point 👀
+</div>
+<div className="mt-2 text-sm text-white/70">
+  Teams ranked 11–20 are separating fast this week. Unlock full rankings and compare who’s actually in the mix.
+</div>
 
                         <div className="mt-4 flex justify-center gap-3">
                           <Link
                             href={rankingsCtaHref}
                             className="rounded-md bg-teal-400 px-4 py-2 font-semibold text-slate-900 hover:opacity-90"
                           >
-                            {session?.user ? "Upgrade to Premium" : "Create Account"}
+                            {session?.user ? "Unlock Full Rankings" : "Create Account"}
                           </Link>
                         </div>
                       </div>
