@@ -992,6 +992,7 @@ const closenessLabel = teamA && teamB && diff != null ? getClosenessLabel(diff) 
         ? "< 1 pt"
         : `~${diff.toFixed(1)} pts`
       : "—",
+      detail: "",
   locked: false,
 },
       {
