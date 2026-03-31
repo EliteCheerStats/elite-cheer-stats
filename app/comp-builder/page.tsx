@@ -1,5 +1,5 @@
 "use client";
-
+import { PROMO_ACTIVE } from "@/lib/promo";
 import React, { Fragment, useEffect, useMemo, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 import {
@@ -771,12 +771,15 @@ function CompBuilderInner() {
   const primaryTeam = roster.find((t) => t.id === primaryTeamId);
 
   const lineupReady = roster.length >= 2;
-  const showPremiumResults = !premiumLoading && isPremium;
-  const shouldGateResults = lineupReady && !showPremiumResults;
-  const lockedHref = !session
-  ? "/login?next=/upgrade"
+const promoUnlocked = !!session && PROMO_ACTIVE;
+const showPremiumResults = !premiumLoading && (isPremium || promoUnlocked);
+const shouldGateResults = lineupReady && !showPremiumResults;
+const lockedHref = !session
+  ? "/login?next=/comp-builder"
   : "/upgrade";
-  const lockedCtaLabel = "Unlock Your Results";
+const lockedCtaLabel = promoUnlocked
+  ? "Comp Builder is unlocked today"
+  : "Unlock Your Results";
 
   function splitProgramTeam(label: string) {
     const parts = label.split(" - ");
@@ -896,7 +899,11 @@ function CompBuilderInner() {
           </button>
           */}
         </div>
-
+{promoUnlocked && !isPremium && (
+  <div className="mb-6 rounded-2xl border border-teal-400/20 bg-teal-400/10 px-4 py-3 text-sm text-teal-100">
+    🎉 Comp Builder is unlocked TODAY ONLY for logged-in ECS users.
+  </div>
+)}
                 {shouldGateResults ? (
           <div className="mb-6 rounded-2xl border border-teal-400/15 bg-[#131f3a]/95 p-6">
             <div className="text-[11px] uppercase tracking-[0.24em] text-teal-300">

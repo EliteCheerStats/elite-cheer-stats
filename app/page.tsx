@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
+import { PROMO_ACTIVE } from "@/lib/promo";
 
 export default function HomePage() {
   const [loading, setLoading] = useState(true);
@@ -159,7 +160,14 @@ export default function HomePage() {
             Rankings, team search, comparisons, and premium cheer analytics built
             for parents, athletes, and gym decision-makers.
           </p>
-
+{PROMO_ACTIVE && (
+  <a
+    href="/comp-builder"
+    className="mt-4 inline-block rounded-full border border-teal-400/30 bg-teal-400/10 px-4 py-2 text-sm font-semibold text-teal-200 hover:bg-teal-400/20"
+  >
+    🎉 Comp Builder FREE today only for ECS users → Create a free account or sign in for ACCESS!
+  </a>
+)}
           <div className="mt-8 flex flex-wrap gap-4">
 
 <Link
