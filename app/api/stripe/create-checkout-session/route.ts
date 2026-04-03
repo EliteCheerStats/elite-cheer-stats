@@ -42,6 +42,7 @@ export async function POST(req: Request) {
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       customer_email: userEmail,
+      allow_promotion_codes: true,
       line_items: [
   {
     price: "price_1TCuwuDk4M7TUmP6j9yCbWrJ", // your LIVE price here
