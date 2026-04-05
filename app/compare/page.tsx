@@ -62,6 +62,7 @@ type TeamStats = {
   hitZeroHits: number;
   hitZeroTotal: number;
   eventCount: number;
+  performanceCount: number;
 };
 
 type TeamSeriesPoint = {
@@ -833,28 +834,30 @@ export default function ComparePage() {
   }, [eventsB, ceilingsB]);
 
   const statsA = useMemo<TeamStats>(() => {
-    const hitRate = computeHitRate(perfA);
-    return {
-      avgScore: avg(eventsA.map((r) => toNum(r.event_score))),
-      avgCeiling: avg(seriesA.map((r) => r.ceiling_score)),
-      hitZeroRate: hitRate.pct,
-      hitZeroHits: hitRate.hits,
-      hitZeroTotal: hitRate.total,
-      eventCount: eventsA.length,
-    };
-  }, [eventsA, perfA, seriesA]);
+  const hitRate = computeHitRate(perfA);
+  return {
+    avgScore: avg(eventsA.map((r) => toNum(r.event_score))),
+    avgCeiling: avg(seriesA.map((r) => r.ceiling_score)),
+    hitZeroRate: hitRate.pct,
+    hitZeroHits: hitRate.hits,
+    hitZeroTotal: hitRate.total,
+    eventCount: eventsA.length,
+    performanceCount: perfA.length,
+  };
+}, [eventsA, perfA, seriesA]);
 
   const statsB = useMemo<TeamStats>(() => {
-    const hitRate = computeHitRate(perfB);
-    return {
-      avgScore: avg(eventsB.map((r) => toNum(r.event_score))),
-      avgCeiling: avg(seriesB.map((r) => r.ceiling_score)),
-      hitZeroRate: hitRate.pct,
-      hitZeroHits: hitRate.hits,
-      hitZeroTotal: hitRate.total,
-      eventCount: eventsB.length,
-    };
-  }, [eventsB, perfB, seriesB]);
+  const hitRate = computeHitRate(perfB);
+  return {
+    avgScore: avg(eventsB.map((r) => toNum(r.event_score))),
+    avgCeiling: avg(seriesB.map((r) => r.ceiling_score)),
+    hitZeroRate: hitRate.pct,
+    hitZeroHits: hitRate.hits,
+    hitZeroTotal: hitRate.total,
+    eventCount: eventsB.length,
+    performanceCount: perfB.length,
+  };
+}, [eventsB, perfB, seriesB]);
 
 const teamA_score = statsA?.avgScore ?? null;
 const teamB_score = statsB?.avgScore ?? null;
@@ -1252,15 +1255,15 @@ const closenessLabel = teamA && teamB && diff != null ? getClosenessLabel(diff) 
             />
           )}
 
-          <StatCard
-            title="Events Tracked"
-            leftColor={RED}
-            rightColor={BLUE}
-            leftLabel={teamAName}
-            rightLabel={teamBName}
-            leftValue={loadingA ? "—" : String(statsA.eventCount)}
-            rightValue={loadingB ? "—" : String(statsB.eventCount)}
-          />
+<StatCard
+  title="Performances Tracked"
+  leftColor={RED}
+  rightColor={BLUE}
+  leftLabel={teamAName}
+  rightLabel={teamBName}
+  leftValue={loadingA ? "—" : String(statsA.performanceCount)}
+  rightValue={loadingB ? "—" : String(statsB.performanceCount)}
+/>
         </div>
 
         {!premiumLoading && !isPremium && ready && (

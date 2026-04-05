@@ -63,7 +63,6 @@ type Filters = {
   flexMode: FlexMode;
   coedMode: CoedMode;
   size: SizeOpt;
-  requireTwoPlus: boolean; // default ON
 };
 
 const DEFAULT_FILTERS: Filters = {
@@ -74,7 +73,6 @@ const DEFAULT_FILTERS: Filters = {
   flexMode: "Any",
   coedMode: "Any",
   size: "Any",
-  requireTwoPlus: true,
 };
 
 const SEASON_START = "2025-12-01";
@@ -435,7 +433,6 @@ export default function RankingsPage() {
       };
     });
 
-    if (filters.requireTwoPlus) out = out.filter((x) => x.comps >= 2);
 
     if (filters.size !== "Any") {
       out = out.filter((x) => x.size_final && normalize(x.size_final) === normalize(filters.size));
@@ -443,7 +440,7 @@ export default function RankingsPage() {
 
     out.sort((x, y) => y.avg - x.avg);
     return out;
-  }, [filteredRows, filters.requireTwoPlus, filters.size]);
+  }, [filteredRows, filters.size]);
 
   const chartTop10 = useMemo(
     () =>
@@ -471,9 +468,7 @@ export default function RankingsPage() {
     .filter(Boolean)
     .join(" ");
 
-  const emptyHint = filters.requireTwoPlus
-    ? "No teams match. Default excludes teams with only 1 competition — toggle '2+ comps' off to include them."
-    : "No teams match your current filters.";
+  const emptyHint = "No teams match your current filters.";
 
   const rankingsCtaHref = session?.user ? "/upgrade" : "/login";
   const showRankingsCta = !premiumLoading && !isPremium;
@@ -604,25 +599,7 @@ export default function RankingsPage() {
             </select>
           </label>
 
-          <div className="flex items-center justify-between gap-3 md:justify-end">
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-300">2+ comps</span>
-              <button
-                type="button"
-                onClick={() => setFilter("requireTwoPlus", !filters.requireTwoPlus)}
-                aria-pressed={filters.requireTwoPlus}
-                className={`relative h-10 w-20 rounded-full border border-white/15 ${
-                  filters.requireTwoPlus ? "bg-white/15" : "bg-white/5"
-                }`}
-                title={filters.requireTwoPlus ? "Excluding 1-comp teams" : "Including 1-comp teams"}
-              >
-                <span
-                  className={`absolute top-1 h-8 w-8 rounded-full bg-white/90 transition-all ${
-                    filters.requireTwoPlus ? "left-11" : "left-1"
-                  }`}
-                />
-              </button>
-            </div>
+          
 
             <button
               type="button"
@@ -665,7 +642,7 @@ export default function RankingsPage() {
 
 
         </div>
-      </div>
+     
 
       {error && (
         <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4">
