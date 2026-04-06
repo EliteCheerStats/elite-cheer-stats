@@ -95,7 +95,16 @@ export default function LoginPageClient() {
           onChange={(e) => setPassword(e.target.value)}
           className="mt-2 w-full rounded-md bg-black/30 border border-white/10 px-3 py-2 text-sm outline-none focus:border-teal-400/50"
         />
-
+{mode === "login" ? (
+  <div className="mt-2 flex justify-end">
+    <Link
+      href="/forgot-password"
+      className="text-xs text-white/60 transition hover:text-teal-400"
+    >
+      Forgot password?
+    </Link>
+  </div>
+) : null}
         {msg && <div className="mt-3 text-sm text-red-300">{msg}</div>}
 
         <button
