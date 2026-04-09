@@ -75,7 +75,7 @@ export default function LoginPageClient() {
         <p className="mt-2 text-white/70 text-sm">
           {mode === "login"
             ? "Log in to access your account and Premium tools."
-            : "Create an account to unlock Premium analytics and save your access."}
+            : "Create an account to follow teams and save your access. Upgrade to Premium at any time!"}
         </p>
 
         <label className="mt-6 block text-sm text-white/80">Email</label>

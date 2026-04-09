@@ -23,8 +23,34 @@ export default function TeamSearchPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<any>(null);
 
+  const [session, setSession] = useState<any>(null);
+  const [followedIds, setFollowedIds] = useState<Set<string>>(new Set());
+
   const q = query.trim();
   const lastUpdated = new Date().toLocaleDateString();
+
+useEffect(() => {
+  async function loadSession() {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    setSession(session);
+
+    if (!session?.user) return;
+
+    const { data } = await supabase
+      .from("user_followed_teams")
+      .select("team_id")
+      .eq("user_id", session.user.id);
+
+    if (data) {
+      setFollowedIds(new Set(data.map((d) => d.team_id)));
+    }
+  }
+
+  loadSession();
+}, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -147,6 +173,55 @@ setHits(list);
     };
   }, [q]);
 
+  async function toggleFollow(teamId: string) {
+  if (!session?.user) {
+    window.location.href = `/login?next=/team`;
+    return;
+  }
+
+  const isFollowing = followedIds.has(teamId);
+
+  try {
+    if (isFollowing) {
+      const { error } = await supabase
+        .from("user_followed_teams")
+        .delete()
+        .eq("user_id", session.user.id)
+        .eq("team_id", teamId);
+
+      if (error) {
+        console.error("Unfollow error:", error);
+        alert(error.message || "Failed to unfollow team.");
+        return;
+      }
+
+      setFollowedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(teamId);
+        return next;
+      });
+    } else {
+      const { error } = await supabase
+        .from("user_followed_teams")
+        .insert({
+          user_id: session.user.id,
+          team_id: teamId,
+        });
+
+      if (error) {
+        console.error("Follow error:", error);
+        alert(error.message || "Failed to follow team.");
+        return;
+      }
+
+      setFollowedIds((prev) => new Set(prev).add(teamId));
+    }
+  } catch (err) {
+    console.error("Toggle follow failed:", err);
+    alert("Something went wrong. Please try again.");
+  }
+}
+
   const helperText = useMemo(() => {
     if (q.length < 2) return "Type at least 2 characters to search teams.";
     if (loading) return "Searching…";
@@ -221,19 +296,39 @@ setHits(list);
 </div>
             </div>
 
-            <Link
-              href={`/team/${h.team_id}`}
-              style={{
-                padding: "10px 12px",
-                borderRadius: 10,
-                border: "1px solid #ddd",
-                textDecoration: "none",
-                fontWeight: 700,
-                whiteSpace: "nowrap",
-              }}
-            >
-              View Team →
-            </Link>
+           <div style={{ display: "flex", gap: 8 }}>
+  <button
+    onClick={() => toggleFollow(h.team_id)}
+    style={{
+      padding: "10px 12px",
+      borderRadius: 10,
+      border: "1px solid #14b8a6",
+      background: followedIds.has(h.team_id)
+        ? "rgba(20,184,166,0.15)"
+        : "transparent",
+      color: "#14b8a6",
+      fontWeight: 700,
+      cursor: "pointer",
+      whiteSpace: "nowrap",
+    }}
+  >
+    {followedIds.has(h.team_id) ? "Following" : "Follow"}
+  </button>
+
+  <Link
+    href={`/team/${h.team_id}`}
+    style={{
+      padding: "10px 12px",
+      borderRadius: 10,
+      border: "1px solid #ddd",
+      textDecoration: "none",
+      fontWeight: 700,
+      whiteSpace: "nowrap",
+    }}
+  >
+    View Team →
+  </Link>
+</div>
           </div>
         ))}
       </div>

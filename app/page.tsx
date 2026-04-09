@@ -9,6 +9,15 @@ export default function HomePage() {
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
   const [isPremium, setIsPremium] = useState(false);
 
+  const [followedTeams, setFollowedTeams] = useState<
+  {
+    team_id: string;
+    team_name: string | null;
+    program_name: string | null;
+    last_score?: number | null;
+  }[]
+>([]);
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
@@ -16,50 +25,86 @@ export default function HomePage() {
   const [authMessage, setAuthMessage] = useState<string | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let mounted = true;
 
-    async function load() {
-      setLoading(true);
 
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+useEffect(() => {
+  let mounted = true;
 
-      if (!mounted) return;
+  async function load() {
+    setLoading(true);
 
-      if (!session?.user) {
-        setSessionEmail(null);
-        setIsPremium(false);
-        setLoading(false);
-        return;
-      }
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
 
-      setSessionEmail(session.user.email ?? null);
+    if (!mounted) return;
 
-      const { data } = await supabase
-        .from("profiles")
-        .select("is_premium")
-        .eq("id", session.user.id)
-        .maybeSingle();
-
-      if (!mounted) return;
-
-      setIsPremium(!!data?.is_premium);
+    if (!session?.user) {
+      setSessionEmail(null);
+      setIsPremium(false);
+      setFollowedTeams([]);
       setLoading(false);
+      return;
     }
 
+    setSessionEmail(session.user.email ?? null);
+
+    const { data: followed } = await supabase
+      .from("v_user_followed_teams")
+      .select("team_id, team_name, program_name, created_at")
+      .eq("user_id", session.user.id)
+      .order("created_at", { ascending: false })
+      .limit(3);
+
+    if (followed && followed.length > 0) {
+      const { data: scores } = await supabase
+        .from("v_team_event_scores")
+        .select("team_id, event_score, weekend_date")
+        .in("team_id", followed.map((t) => t.team_id));
+
+      const latestScores = new Map<string, any>();
+
+      for (const row of scores ?? []) {
+        const existing = latestScores.get(row.team_id);
+
+        if (!existing || row.weekend_date > existing.weekend_date) {
+          latestScores.set(row.team_id, row);
+        }
+      }
+
+      setFollowedTeams(
+        followed.map((t) => ({
+          ...t,
+          last_score: latestScores.get(t.team_id)?.event_score ?? null,
+        }))
+      );
+    } else {
+      setFollowedTeams([]);
+    }
+
+    const { data } = await supabase
+      .from("profiles")
+      .select("is_premium")
+      .eq("id", session.user.id)
+      .maybeSingle();
+
+    if (!mounted) return;
+
+    setIsPremium(!!data?.is_premium);
+    setLoading(false);
+  }
+
+  load();
+
+  const { data: listener } = supabase.auth.onAuthStateChange(() => {
     load();
+  });
 
-    const { data: listener } = supabase.auth.onAuthStateChange(() => {
-      load();
-    });
-
-    return () => {
-      mounted = false;
-      listener.subscription.unsubscribe();
-    };
-  }, []);
+  return () => {
+    mounted = false;
+    listener.subscription.unsubscribe();
+  };
+}, []);
 
   async function handleLogout() {
     await supabase.auth.signOut();
@@ -216,26 +261,67 @@ export default function HomePage() {
           )}
         </div>
 
-        <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
-          <div className="grid gap-4 md:grid-cols-2">
-            <FeatureCard
-              title="Rankings"
-              desc="Free access to top team movement and leaderboard visibility."
-            />
-            <FeatureCard
-              title="Team Search"
-              desc="Quickly find teams, scores, trends, and event history."
-            />
-            <FeatureCard
-              title="Team Comparison"
-              desc="Compare teams side by side across scoring trends and outcomes."
-            />
-            <FeatureCard
-              title="Premium Analytics"
-              desc="Unlock ceiling score, hit-zero rate, deeper rankings, and more."
-            />
+{!loading && sessionEmail && followedTeams.length > 0 && (
+  <div className="mb-8 rounded-2xl border border-[#14b8a6]/25 bg-gradient-to-br from-[#0b1f4f] via-[#08204a] to-[#05163a] p-6 shadow-[0_0_0_1px_rgba(20,184,166,0.06)]">
+    <h2 className="text-2xl font-bold text-white">Your Teams</h2>
+    <p className="mt-1 text-sm text-teal-100/80">
+      Your teams (up to 3). Updated weekly.
+    </p>
+
+    <div className="mt-4 grid gap-4 md:grid-cols-3">
+      {followedTeams.map((team) => (
+        <div
+          key={team.team_id}
+          className="rounded-xl border border-white/10 bg-[#07122f]/80 p-4"
+        >
+          <div className="text-lg font-semibold text-white">
+            {team.team_name}
           </div>
+
+          {team.program_name && (
+            <div className="text-sm text-white/70">
+              {team.program_name}
+            </div>
+          )}
+
+          {team.last_score != null && (
+            <div className="mt-2 text-sm font-semibold text-teal-300">
+              Last score: {Number(team.last_score).toFixed(1)}
+            </div>
+          )}
+
+          <Link
+            href={`/team/${team.team_id}`}
+            className="mt-3 inline-block rounded-lg border border-white/15 px-3 py-2 text-sm font-semibold hover:bg-white/10"
+          >
+            View Team →
+          </Link>
         </div>
+      ))}
+    </div>
+  </div>
+)}
+
+<div className="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+  <div className="grid gap-4 md:grid-cols-2">
+    <FeatureCard
+      title="Rankings"
+      desc="Free access to top team movement and leaderboard visibility."
+    />
+    <FeatureCard
+      title="Team Search"
+      desc="Quickly find teams, scores, trends, and event history."
+    />
+    <FeatureCard
+      title="Team Comparison"
+      desc="Compare teams side by side across scoring trends and outcomes."
+    />
+    <FeatureCard
+      title="Premium Analytics"
+      desc="Unlock ceiling score, hit-zero rate, deeper rankings, and more."
+    />
+  </div>
+</div>
 
         {!loading && !sessionEmail && (
           <div className="mt-8 rounded-2xl border border-white/10 bg-[#03123b] p-6">
