@@ -1358,7 +1358,7 @@ const lockedCtaLabel = "Unlock Your Results";
                             className="px-4 py-3 text-left cursor-pointer"
                             onClick={() => sortTableBy("ceiling")}
                           >
-                            Ceiling
+                            Avg Ceiling
                           </th>
                           <th
                             className="px-4 py-3 text-left cursor-pointer"

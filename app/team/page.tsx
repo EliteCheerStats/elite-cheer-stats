@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
+import { trackUserEvent } from "@/lib/user-events";
 
 type TeamHit = {
   team_id: string;
@@ -52,127 +53,143 @@ useEffect(() => {
   loadSession();
 }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function run() {
-  setError(null);
-
-  const search = q.trim();
-
-if (search.length < 3) {
-  setHits([]);
-  setLoading(false);
-  return;
-}
-
-setLoading(true);
-
-const { data, error } = await supabase
-  .from("v_team_event_scores")
-  .select(`
-    team_id,
-    program_id,
-    team,
-    program,
-    event_id,
-    weekend_date
-  `)
-  .or(`team.ilike.%${search}%,program.ilike.%${search}%`)
-  .order("team")
-  .limit(200);
-
-if (cancelled) return;
-
-if (error) {
-  const message = String(error.message ?? "");
-
-  if (
-    message.includes("AbortError") ||
-    message.includes("aborted") ||
-    message.includes("Lock was stolen by another request")
-  ) {
-    return;
-  }
-
-  setError(error);
-  setHits([]);
-  setLoading(false);
-  return;
-}
 
 
-      const map = new Map<string, TeamHit>();
-
-for (const r of data ?? []) {
-  const teamId = String(r.team_id ?? "");
-  if (!teamId) continue;
-
-  const weekendDate = String(r.weekend_date ?? "");
-  const existing = map.get(teamId);
-
-  if (!existing) {
-    map.set(teamId, {
-      team_id: teamId,
-      program_id: (r.program_id as string | null) ?? null,
-      team: String(r.team ?? ""),
-      program: String(r.program ?? ""),
-      team_display_name: `${String(r.program ?? "")} ${String(r.team ?? "")}`,
-      event_count: weekendDate ? 1 : 0,
-      first_event_date: weekendDate || null,
-      last_event_date: weekendDate || null,
-      rows: 1,
-      last_week: weekendDate || null,
-      event_ids: new Set([String(r.event_id ?? "")]),
-    } as TeamHit & { event_ids: Set<string> });
-  } else {
-    existing.rows = (existing.rows ?? 0) + 1;
-
-    const eventId = String(r.event_id ?? "");
-    if (!(existing as any).event_ids) {
-      (existing as any).event_ids = new Set<string>();
-    }
-    if (eventId) {
-      (existing as any).event_ids.add(eventId);
-      existing.event_count = (existing as any).event_ids.size;
-    }
-
-    if (weekendDate) {
-      if (!existing.first_event_date || weekendDate < existing.first_event_date) {
-        existing.first_event_date = weekendDate;
-      }
-      if (!existing.last_event_date || weekendDate > existing.last_event_date) {
-        existing.last_event_date = weekendDate;
-        existing.last_week = weekendDate;
-      }
-    }
-  }
-}
-
-const list = Array.from(map.values())
-  .map((h: any) => {
-    delete h.event_ids;
-    return h;
-  })
-  .sort((a, b) => {
-    const ad = a.last_week ?? "";
-    const bd = b.last_week ?? "";
-    if (ad !== bd) return bd.localeCompare(ad);
-    return (b.rows ?? 0) - (a.rows ?? 0);
+useEffect(() => {
+  trackUserEvent({
+    eventType: "team_search_view",
+    page: "/team",
   });
+}, []);
 
-setHits(list);
+  useEffect(() => {
+  let cancelled = false;
+
+  async function run() {
+    setError(null);
+
+    const search = q.trim();
+
+    if (search.length < 3) {
+      setHits([]);
       setLoading(false);
+      return;
     }
 
-    run();
+    setLoading(true);
 
-    return () => {
-      cancelled = true;
-    };
-  }, [q]);
+    const { data, error } = await supabase
+      .from("v_team_event_scores")
+      .select(`
+        team_id,
+        program_id,
+        team,
+        program,
+        event_id,
+        weekend_date
+      `)
+      .or(`team.ilike.%${search}%,program.ilike.%${search}%`)
+      .order("team")
+      .limit(200);
 
-  async function toggleFollow(teamId: string) {
+    if (cancelled) return;
+
+    if (error) {
+      const message = String(error.message ?? "");
+
+      if (
+        message.includes("AbortError") ||
+        message.includes("aborted") ||
+        message.includes("Lock was stolen by another request")
+      ) {
+        return;
+      }
+
+      setError(error);
+      setHits([]);
+      setLoading(false);
+      return;
+    }
+
+    const map = new Map<string, TeamHit>();
+
+    for (const r of data ?? []) {
+      const teamId = String(r.team_id ?? "");
+      if (!teamId) continue;
+
+      const weekendDate = String(r.weekend_date ?? "");
+      const existing = map.get(teamId);
+
+      if (!existing) {
+        map.set(teamId, {
+          team_id: teamId,
+          program_id: (r.program_id as string | null) ?? null,
+          team: String(r.team ?? ""),
+          program: String(r.program ?? ""),
+          event_count: weekendDate ? 1 : 0,
+          first_event_date: weekendDate || null,
+          last_event_date: weekendDate || null,
+          rows: 1,
+          last_week: weekendDate || null,
+          event_ids: new Set([String(r.event_id ?? "")]),
+        } as TeamHit & { event_ids: Set<string> });
+      } else {
+        existing.rows = (existing.rows ?? 0) + 1;
+
+        const eventId = String(r.event_id ?? "");
+        if (!(existing as any).event_ids) {
+          (existing as any).event_ids = new Set<string>();
+        }
+        if (eventId) {
+          (existing as any).event_ids.add(eventId);
+          existing.event_count = (existing as any).event_ids.size;
+        }
+
+        if (weekendDate) {
+          if (!existing.first_event_date || weekendDate < existing.first_event_date) {
+            existing.first_event_date = weekendDate;
+          }
+          if (!existing.last_event_date || weekendDate > existing.last_event_date) {
+            existing.last_event_date = weekendDate;
+            existing.last_week = weekendDate;
+          }
+        }
+      }
+    }
+
+    const list = Array.from(map.values())
+      .map((h: any) => {
+        delete h.event_ids;
+        return h;
+      })
+      .sort((a, b) => {
+        const ad = a.last_week ?? "";
+        const bd = b.last_week ?? "";
+        if (ad !== bd) return bd.localeCompare(ad);
+        return (b.rows ?? 0) - (a.rows ?? 0);
+      });
+
+    setHits(list);
+    setLoading(false);
+
+    void trackUserEvent({
+      eventType: "team_search_submit",
+      page: "/team",
+      metadata: {
+        search_term: search,
+        result_count: list.length,
+      },
+    });
+  }
+
+  run();
+
+  return () => {
+    cancelled = true;
+  };
+}, [q]);
+
+  async function toggleFollow(teamId: string, teamName: string) {
   if (!session?.user) {
     window.location.href = `/login?next=/team`;
     return;
@@ -200,21 +217,35 @@ setHits(list);
         return next;
       });
     } else {
-      const { error } = await supabase
-        .from("user_followed_teams")
-        .insert({
-          user_id: session.user.id,
-          team_id: teamId,
-        });
+  const { error } = await supabase
+    .from("user_followed_teams")
+    .insert({
+      user_id: session.user.id,
+      team_id: teamId,
+    });
 
-      if (error) {
-        console.error("Follow error:", error);
-        alert(error.message || "Failed to follow team.");
-        return;
-      }
+  if (error) {
+    console.error("Follow error:", error);
+    alert(error.message || "Failed to follow team.");
+    return;
+  }
 
-      setFollowedIds((prev) => new Set(prev).add(teamId));
-    }
+  setFollowedIds((prev) => {
+    const next = new Set(prev);
+    next.add(teamId);
+    return next;
+  });
+
+  // ✅ tracking (safe placement)
+  void trackUserEvent({
+    eventType: "team_followed",
+    page: "/team",
+    teamId,
+    metadata: {
+      team_name: teamName,
+    },
+  });
+}
   } catch (err) {
     console.error("Toggle follow failed:", err);
     alert("Something went wrong. Please try again.");
@@ -297,7 +328,7 @@ setHits(list);
 
            <div style={{ display: "flex", gap: 8 }}>
   <button
-    onClick={() => toggleFollow(h.team_id)}
+    onClick={() => toggleFollow(h.team_id, `${h.program} ${h.team}`)}
     style={{
       padding: "10px 12px",
       borderRadius: 10,
