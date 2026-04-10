@@ -200,7 +200,7 @@ function resolveTeamSize(rowsDescByDate: Array<{ weekend: string; size: Exclude<
 
 export default function RankingsPage() {
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
-
+  const [debouncedSearch, setDebouncedSearch] = useState(filters.search);
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<any>(null);
@@ -279,6 +279,14 @@ export default function RankingsPage() {
     };
   }, []);
 
+useEffect(() => {
+  const t = setTimeout(() => {
+    setDebouncedSearch(filters.search);
+  }, 350);
+
+  return () => clearTimeout(t);
+}, [filters.search]);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -286,13 +294,28 @@ export default function RankingsPage() {
       setLoading(true);
       setError(null);
 
-      let q = supabase
-        .from("v_team_event_scores")
-        .select("*")
-        .gte("weekend_date", SEASON_START)
-        .order("weekend_date", { ascending: false });
+let q = supabase
+  .from("v_team_event_scores")
+ .select(`
+  team_id,
+  program_id,
+  team,
+  program,
+  division,
+  event_score,
+  event_name,
+  event_id,
+  weekend_date,
+  source_url,
+  age_bucket,
+  is_d2,
+  is_flex,
+  size_effective,
+  size_raw
+`)
+  .gte("weekend_date", SEASON_START);
 
-      const s = filters.search.trim();
+      const s = debouncedSearch.trim();
       if (s.length >= 2) {
         const esc = s.replace(/,/g, "");
         q = q.or(`team.ilike.%${esc}%,program.ilike.%${esc}%,division.ilike.%${esc}%,event_name.ilike.%${esc}%`);
@@ -317,47 +340,66 @@ export default function RankingsPage() {
     return () => {
       cancelled = true;
     };
-  }, [filters.search]);
+  }, [debouncedSearch]);
 
-  const filteredRows = useMemo(() => {
-    const q = filters.search.trim().toLowerCase();
-    const ageNorm = normalize(filters.age);
+  
+const filteredRows = useMemo(() => {
+  const q = filters.search.trim().toLowerCase();
+  const ageNorm = normalize(filters.age);
 
-    return rows.filter((r) => {
-      const meta = parseMeta(r);
-      if (!isSupportedForRankings(meta)) return false;
+  return rows.filter((r) => {
+    const meta = parseMeta(r);
 
-      if (filters.level !== "All" && meta.level !== filters.level) return false;
+    if (!isSupportedForRankings(meta)) return false;
 
-      if (filters.age !== "All") {
-        const rowAge = String(r.age_bucket ?? "");
-        if (rowAge) {
-          if (normalize(rowAge) !== ageNorm) return false;
-        } else {
-          if (!normalize(meta.division).includes(ageNorm)) return false;
-        }
+    if (filters.level !== "All" && meta.level !== filters.level) return false;
+
+    if (filters.age !== "All") {
+      const rowAge = String(r.age_bucket ?? "").trim();
+
+      if (rowAge) {
+        if (normalize(rowAge) !== ageNorm) return false;
+      } else {
+        if (!normalize(String(meta.division ?? "")).includes(ageNorm)) return false;
       }
+    }
 
-      if (filters.d2Mode === "D2Only" && !meta.isD2) return false;
-      if (filters.d2Mode === "NonD2Only" && meta.isD2) return false;
+    if (filters.d2Mode === "D2Only" && !meta.isD2) return false;
+    if (filters.d2Mode === "NonD2Only" && meta.isD2) return false;
 
-      if (filters.flexMode === "FlexOnly" && !meta.isFlex) return false;
-      if (filters.flexMode === "NonFlexOnly" && meta.isFlex) return false;
+    if (filters.flexMode === "FlexOnly" && !meta.isFlex) return false;
+    if (filters.flexMode === "NonFlexOnly" && meta.isFlex) return false;
 
-      if (filters.coedMode === "CoedOnly" && !meta.isCoed) return false;
-      if (filters.coedMode === "NonCoedOnly" && meta.isCoed) return false;
+    if (filters.coedMode === "CoedOnly" && !meta.isCoed) return false;
+    if (filters.coedMode === "NonCoedOnly" && meta.isCoed) return false;
 
-      if (q) {
-        const eventName = String(pick(r, eventNameKeys, "")).toLowerCase();
-        const program = String(pick(r, programKeys, "")).toLowerCase();
-        const team = String(pick(r, teamKeys, "")).toLowerCase();
-        const div = meta.division.toLowerCase();
-        if (!eventName.includes(q) && !program.includes(q) && !team.includes(q) && !div.includes(q)) return false;
+    if (q) {
+      const eventName = String(pick(r, eventNameKeys, "")).toLowerCase();
+      const program = String(pick(r, programKeys, "")).toLowerCase();
+      const team = String(pick(r, teamKeys, "")).toLowerCase();
+      const div = String(meta.division ?? "").toLowerCase();
+
+      if (
+        !eventName.includes(q) &&
+        !program.includes(q) &&
+        !team.includes(q) &&
+        !div.includes(q)
+      ) {
+        return false;
       }
+    }
 
-      return true;
-    });
-  }, [rows, filters.level, filters.age, filters.d2Mode, filters.flexMode, filters.coedMode, filters.search]);
+    return true;
+  });
+}, [
+  rows,
+  filters.search,
+  filters.level,
+  filters.age,
+  filters.d2Mode,
+  filters.flexMode,
+  filters.coedMode,
+]);
 
   const teamRankings = useMemo(() => {
     type Agg = {

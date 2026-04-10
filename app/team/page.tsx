@@ -85,23 +85,22 @@ const { data, error } = await supabase
 if (cancelled) return;
 
 if (error) {
+  const message = String(error.message ?? "");
+
+  if (
+    message.includes("AbortError") ||
+    message.includes("aborted") ||
+    message.includes("Lock was stolen by another request")
+  ) {
+    return;
+  }
+
   setError(error);
   setHits([]);
   setLoading(false);
   return;
 }
 
-const seen = new Set<string>();
-
-const uniqueHits = (data ?? []).filter((row: any) => {
-  const key = String(row.team_id ?? "");
-  if (!key || seen.has(key)) return false;
-  seen.add(key);
-  return true;
-});
-
-setHits(uniqueHits);
-setLoading(false);
 
       const map = new Map<string, TeamHit>();
 
@@ -223,11 +222,11 @@ setHits(list);
 }
 
   const helperText = useMemo(() => {
-    if (q.length < 2) return "Type at least 2 characters to search teams.";
-    if (loading) return "Searching…";
-    if (error) return "Search error (see details below).";
-    return `${hits.length} unique team(s) found.`;
-  }, [q.length, loading, error, hits.length]);
+  if (q.length < 3) return "Type at least 3 characters to search teams.";
+  if (loading) return "Searching…";
+  if (error) return "Search error (see details below).";
+  return `${hits.length} unique team(s) found.`;
+}, [q.length, loading, error, hits.length]);
 
   return (
     <main style={{ padding: 24, fontFamily: "system-ui" }}>
