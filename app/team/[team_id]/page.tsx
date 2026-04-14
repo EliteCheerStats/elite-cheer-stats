@@ -28,6 +28,14 @@ function toNum(v: any): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+function getEventSizeStars(teamCount: number | null | undefined): string {
+  if (!teamCount || teamCount <= 0) return "—";
+  if (teamCount < 100) return "⭐";
+  if (teamCount < 250) return "⭐⭐";
+  if (teamCount < 500) return "⭐⭐⭐";
+  return "⭐⭐⭐⭐";
+}
+
 function computeHitRate(rows: Row[]) {
   let hits = 0;
   let total = 0;
@@ -107,7 +115,7 @@ export default function TeamProfilePage() {
   const [premiumLoading, setPremiumLoading] = useState(true);
   const [isPremium, setIsPremium] = useState(false);
   const [session, setSession] = useState<any>(null);
-
+  const [followedIds, setFollowedIds] = useState<Set<string>>(new Set());
   useEffect(() => {
     let mounted = true;
 
@@ -127,7 +135,14 @@ export default function TeamProfilePage() {
         setPremiumLoading(false);
         return;
       }
+const { data: followed } = await supabase
+  .from("user_followed_teams")
+  .select("team_id")
+  .eq("user_id", session.user.id);
 
+if (followed) {
+  setFollowedIds(new Set(followed.map((d) => d.team_id)));
+}
       const { data, error } = await supabase
         .from("profiles")
         .select("is_premium")
@@ -176,21 +191,21 @@ export default function TeamProfilePage() {
         const currentTeamId = params.team_id;
 
         const { data: eventData, error: eventError } = await supabase
-          .from("v_team_event_scores")
-          .select(`
-            team_id,
-            program_id,
-            program,
-            team,
-            event_id,
-            event_name,
-            weekend_date,
-            division,
-            size_effective,
-            event_score
-          `)
-          .eq("team_id", currentTeamId)
-          .order("weekend_date", { ascending: true });
+  .from("v_team_event_scores")
+  .select(`
+    team_id,
+    program_id,
+    program,
+    team,
+    event_id,
+    event_name,
+    weekend_date,
+    division,
+    size_effective,
+    event_score
+  `)
+  .eq("team_id", currentTeamId)
+  .order("weekend_date", { ascending: true });
 
         if (eventError) {
           if (!cancelled) {
@@ -210,6 +225,24 @@ export default function TeamProfilePage() {
               .filter(Boolean)
           )
         );
+
+let eventCountData: any[] = [];
+
+if (eventIds.length > 0) {
+  const { data: eventCountsRes, error: eventCountsError } = await supabase
+    .from("v_event_team_counts")
+    .select(`
+      event_id,
+      team_count
+    `)
+    .in("event_id", eventIds);
+
+  if (eventCountsError) {
+    console.error("Event counts query failed:", eventCountsError);
+  } else {
+    eventCountData = eventCountsRes ?? [];
+  }
+}
 
         let ceilingData: any[] = [];
         let perfData: any[] = [];
@@ -274,17 +307,24 @@ export default function TeamProfilePage() {
           ceilingData.map((c: any) => [String(c.event_id), c])
         );
 
+        const eventCounts = new Map(
+  eventCountData.map((r: any) => [String(r.event_id), r.team_count])
+);
+        
         const mergedRows = eventRows.map((r: any) => {
-          const c = ceilings.get(String(r.event_id));
-          return {
-            ...r,
-            ceiling_score_true: c?.ceiling_score ?? null,
-            ceiling_delta: c?.ceiling_delta ?? null,
-            ceiling_method: c?.ceiling_method ?? null,
-            ceiling_supported: c?.ceiling_supported ?? false,
-            round_count: c?.round_count ?? null,
-          };
-        });
+  const c = ceilings.get(String(r.event_id));
+  const teamCount = eventCounts.get(String(r.event_id)) ?? null;
+
+  return {
+    ...r,
+    team_count: teamCount, // 👈 ADD THIS LINE
+    ceiling_score_true: c?.ceiling_score ?? null,
+    ceiling_delta: c?.ceiling_delta ?? null,
+    ceiling_method: c?.ceiling_method ?? null,
+    ceiling_supported: c?.ceiling_supported ?? false,
+    round_count: c?.round_count ?? null,
+  };
+});
 
         if (!cancelled) {
           setRows(mergedRows);
@@ -425,20 +465,65 @@ console.table(
     : "Filter results by weekend and level. Your core numbers update instantly."}
 </p>
 <div className="flex gap-3 mt-3">
-    <Link
-      href="/compare"
-      className="bg-teal-500/10 border border-teal-400 text-teal-300 hover:bg-teal-500/20 px-4 py-2 rounded-lg font-semibold transition"
-    >
-      Compare This Team →
-    </Link>
+  <button
+    onClick={async () => {
+      if (!session?.user) {
+        window.location.href = `/login?next=/team/${teamId}`;
+        return;
+      }
 
-    <Link
-      href="/comp-builder"
-      className="border border-teal-400 text-teal-300 hover:bg-teal-500/10 px-4 py-2 rounded-lg font-semibold transition"
-    >
-      Build Lineup
-    </Link>
-  </div>
+      const isFollowing = followedIds.has(teamId);
+
+      if (isFollowing) {
+        const { error } = await supabase
+          .from("user_followed_teams")
+          .delete()
+          .eq("user_id", session.user.id)
+          .eq("team_id", teamId);
+
+        if (!error) {
+          setFollowedIds((prev) => {
+            const next = new Set(prev);
+            next.delete(teamId);
+            return next;
+          });
+        }
+      } else {
+        const { error } = await supabase
+          .from("user_followed_teams")
+          .insert({
+            user_id: session.user.id,
+            team_id: teamId,
+          });
+
+        if (!error) {
+          setFollowedIds((prev) => new Set(prev).add(teamId));
+        }
+      }
+    }}
+    className={`px-4 py-2 rounded-lg font-semibold border transition ${
+      followedIds.has(teamId)
+        ? "border-teal-400 bg-teal-500/10 text-teal-300"
+        : "border-white/15 bg-white/5 text-white hover:bg-white/10"
+    }`}
+  >
+    {followedIds.has(teamId) ? "Following" : "Follow Team"}
+  </button>
+
+  <Link
+    href="/compare"
+    className="bg-teal-500/10 border border-teal-400 text-teal-300 hover:bg-teal-500/20 px-4 py-2 rounded-lg font-semibold transition"
+  >
+    Compare This Team →
+  </Link>
+
+  <Link
+    href="/comp-builder"
+    className="border border-teal-400 text-teal-300 hover:bg-teal-500/10 px-4 py-2 rounded-lg font-semibold transition"
+  >
+    Build Lineup
+  </Link>
+</div>
           </div>
 
           <div className="flex flex-wrap gap-2">
@@ -679,7 +764,11 @@ console.table(
                   <th className="px-3 py-3">Weekend</th>
                   <th className="px-3 py-3">Event</th>
                   <th className="px-3 py-3">Division</th>
-                  <th className="px-3 py-3">Size</th>
+                  <th className="px-3 py-3">
+  <span title="Based on ECS-supported teams">
+    ECS Event Size
+  </span>
+</th>
                   <th className="px-3 py-3 text-right">Score</th>
                   <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-400">
                     {!premiumLoading && isPremium ? "Ceiling" : "Ceiling 🔒"}
@@ -703,8 +792,15 @@ console.table(
                     </td>
 
                     <td className="px-3 py-3 font-semibold">
-                      {String(r.size_effective ?? "—")}
-                    </td>
+  {r.team_count ? (
+    <>
+      <span className="text-white">{getEventSizeStars(r.team_count)}</span>
+      <span className="ml-1 text-slate-400">({r.team_count})</span>
+    </>
+  ) : (
+    "—"
+  )}
+</td>
 
                     <td className="px-3 py-2 text-right font-semibold">
                       {Number(r.event_score).toFixed(3)}
