@@ -70,7 +70,7 @@ useEffect(() => {
 
     const search = q.trim();
 
-    if (search.length < 3) {
+    if (search.length < 4) {
       setHits([]);
       setLoading(false);
       return;
@@ -89,8 +89,7 @@ useEffect(() => {
         weekend_date
       `)
       .or(`team.ilike.%${search}%,program.ilike.%${search}%`)
-      .order("team")
-      .limit(200);
+      .limit(100);
 
     if (cancelled) return;
 
@@ -173,13 +172,20 @@ useEffect(() => {
     setLoading(false);
 
     void trackUserEvent({
-      eventType: "team_search_submit",
-      page: "/team",
-      metadata: {
-        search_term: search,
-        result_count: list.length,
-      },
-    });
+  eventType: "team_search_submit",
+  page: "/team",
+  metadata: {
+    search_term: search,
+    result_count: list.length,
+  },
+});
+
+// 👇 ADD THIS
+if (typeof window !== "undefined" && (window as any).fbq) {
+  (window as any).fbq('track', 'Search', {
+    search_string: search,
+  });
+}
   }
 
   run();
@@ -253,7 +259,7 @@ useEffect(() => {
 }
 
   const helperText = useMemo(() => {
-  if (q.length < 3) return "Type at least 3 characters to search teams.";
+  if (q.length < 3) return "Type at least 4 characters to search teams.";
   if (loading) return "Searching…";
   if (error) return "Search error (see details below).";
   return `${hits.length} unique team(s) found.`;
