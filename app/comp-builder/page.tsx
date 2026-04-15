@@ -648,7 +648,7 @@ function CompBuilderInner() {
 
   function addTeam(team: TeamOption) {
     if (roster.some((t) => t.id === team.id)) return;
-    if (roster.length >= 12) return;
+    if (roster.length >= 20) return;
 
     const nextRoster = [...roster, team];
     const nextPrimaryTeamId = roster.length === 0 ? team.id : primaryTeamId;
@@ -878,7 +878,7 @@ const lockedCtaLabel = "Unlock Your Results";
             </h1>
 
             <p className="text-slate-300 mt-2">
-              Add up to 12 teams and instantly compare ceiling, consistency, and scores.
+              Add up to 20 teams and instantly compare ceiling, consistency, and scores.
             </p>
           </div>
 
@@ -1035,7 +1035,7 @@ const lockedCtaLabel = "Unlock Your Results";
                       <div className="text-sm">{team.name}</div>
                       <button
                         onClick={() => addTeam(team)}
-                        disabled={alreadyAdded || roster.length >= 12}
+                        disabled={alreadyAdded || roster.length >= 20}
                         className="mt-2 rounded-md border border-white/10 px-2 py-1 text-xs hover:bg-white/5 disabled:opacity-40"
                       >
                         {alreadyAdded ? "Already in roster" : "Add to roster"}
@@ -1049,11 +1049,11 @@ const lockedCtaLabel = "Unlock Your Results";
             <div className="mt-6 border-t border-white/10 pt-4">
               <div className="flex items-center justify-between">
                 <h3 className="font-medium">Roster</h3>
-                <span className="text-xs text-white/50">{roster.length} / 12</span>
+                <span className="text-xs text-white/50">{roster.length} / 20</span>
               </div>
 
               <div className="text-[11px] text-white/40 mt-1">
-                Up to 12 teams!
+                Up to 20 teams!
               </div>
 
               <div className="mt-3 space-y-2">
