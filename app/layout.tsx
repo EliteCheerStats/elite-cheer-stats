@@ -91,6 +91,13 @@ export default function RootLayout({
   >
     Comp Builder
   </a>
+
+    <a
+  className="rounded-lg border border-rose-400/40 bg-rose-500/10 px-3 py-1.5 text-rose-200 hover:bg-rose-500/20"
+  href="/summit-builder"
+>
+  Summit Builder
+</a>
 <SubscriptionButton />
 
 </nav>
