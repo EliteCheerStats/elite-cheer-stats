@@ -2065,8 +2065,10 @@ export default function SummitBuilderPage() {
                                 </td>
 
                                 <td className="px-4 py-3 text-emerald-300">
-                                  {row.hitZeroRate ? Math.round(row.hitZeroRate) + "%" : "No ECS data"}
-                                </td>
+  {Number.isFinite(row.hitZeroRate)
+    ? `${Math.round(row.hitZeroRate)}%`
+    : "No ECS data"}
+</td>
 
                                 <td className="px-4 py-3 text-white/80">
                                   {row.lastCompDate ? formatDate(row.lastCompDate) : "No ECS data"}
