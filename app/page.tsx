@@ -235,6 +235,13 @@ useEffect(() => {
             >
               Comp Builder
             </Link>
+
+            <Link
+  href="/summit-builder"
+  className="rounded-xl border border-pink-500/60 bg-pink-500/10 px-6 py-4 font-semibold text-pink-300 transition hover:bg-pink-500/20"
+>
+  Summit Builder
+</Link>
           </div>
 
           {!loading && sessionEmail && (
