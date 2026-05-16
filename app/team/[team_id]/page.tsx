@@ -274,6 +274,7 @@ export default function TeamProfilePage() {
             division,
             rank,
             event_score,
+            display_score,
             raw_score,
             performance_score,
             deductions,
@@ -297,7 +298,7 @@ export default function TeamProfilePage() {
           const eventId = String(r.event_id ?? "");
           if (!eventId) continue;
 
-          const score = toNum(r.event_score);
+          const score = toNum(r.display_score ?? r.event_score);
           const existing = champByEvent.get(eventId);
           const existingScore = existing ? toNum(existing.event_score) : null;
 
@@ -348,8 +349,8 @@ export default function TeamProfilePage() {
     if (championshipRows.length === 0) return null;
 
     return [...championshipRows].sort((a, b) => {
-      const as = toNum(a.event_score) ?? -Infinity;
-      const bs = toNum(b.event_score) ?? -Infinity;
+      const as = toNum(a.display_score ?? a.event_score) ?? -Infinity;
+      const bs = toNum(b.display_score ?? b.event_score) ?? -Infinity;
       return bs - as;
     })[0];
   }, [championshipRows]);
@@ -365,7 +366,9 @@ export default function TeamProfilePage() {
 
     for (const r of tableRows) {
       const wd = String(r.weekend_date ?? "");
-      const score = toNum(r.event_score);
+      const score = r.is_championship
+  ? toNum(r.display_score ?? r.event_score)
+  : toNum(r.event_score);
       const ceiling = r.is_championship
         ? toNum(r.ceiling_score_true ?? r.event_score)
         : !premiumLoading && isPremium && r.ceiling_supported
@@ -506,7 +509,7 @@ export default function TeamProfilePage() {
                   Score
                 </div>
                 <div className="text-2xl font-extrabold text-yellow-300">
-                  {fmtScore(championshipTop.event_score, 1)}
+                  {fmtScore(championshipTop.display_score ?? championshipTop.event_score, 3)}
                 </div>
               </div>
             </div>
@@ -732,7 +735,7 @@ export default function TeamProfilePage() {
                         axisLine={{ stroke: "rgba(255,255,255,0.12)" }}
                         tickFormatter={(value) => {
                           const point = chartData.find((d) => d.weekend === value);
-                          return point?.is_championship ? "Youth Summit" : value;
+                          return point?.is_championship ? "Summit" : value;
                         }}
                       />
                       <YAxis
@@ -897,7 +900,7 @@ export default function TeamProfilePage() {
       : ""
   }
 >
-  {fmtScore(r.event_score)}
+  {fmtScore(r.display_score ?? r.event_score)}
 </span>
                       </td>
 
@@ -907,7 +910,7 @@ export default function TeamProfilePage() {
                         }`}
                       >
                         {isChampionship ? (
-                          <span className="inline-flex items-center justify-center rounded-md border border-yellow-300 bg-black/40 px-2 py-1 font-extrabold text-yellow-300">{fmtScore(r.event_score)}</span>
+                          <span className="inline-flex items-center justify-center rounded-md border border-yellow-300 bg-black/40 px-2 py-1 font-extrabold text-yellow-300">{fmtScore(r.display_score ?? r.event_score)}</span>
                         ) : !premiumLoading && isPremium ? (
                           r.ceiling_supported ? fmtScore(r.ceiling_score_true) : "—"
                         ) : (

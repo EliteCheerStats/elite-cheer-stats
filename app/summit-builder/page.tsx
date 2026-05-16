@@ -18,12 +18,19 @@ const supabase = createClient(
 );
 
 const SUMMIT_EXPERIENCES = {
+  SUMMIT_2026: {
+    key: "SUMMIT_2026",
+    label: "The Summit",
+    mode: "post" as const,
+    scheduleEventId: null as string | null,
+    championshipEventId: "14478856",
+  },
   D2_2026: {
     key: "D2_2026",
     label: "D2 Summit",
-    mode: "pre" as const,
-    scheduleEventId: "D2_2026",
-    championshipEventId: null as string | null,
+    mode: "post" as const,
+    scheduleEventId: null as string | null,
+    championshipEventId: "14478938",
   },
   YOUTH_2026: {
     key: "YOUTH_2026",
@@ -38,6 +45,7 @@ type SummitExperienceKey = keyof typeof SUMMIT_EXPERIENCES;
 
 const PREVIEW_COUNT_KEY = "ecs_summit_builder_preview_count_v1";
 const FREE_PREVIEW_LIMIT = 2;
+const POST_FREE_ROW_LIMIT = 5;
 const FINALISTS_KEY = "ecs_summit_builder_finalists_D2_2026_v1";
 const FINALISTS_ROSTER_KEY = "ecs_summit_builder_finalist_roster_D2_2026_v1";
 
@@ -54,7 +62,7 @@ const TEAM_COLORS = [
   "#c084fc",
 ];
 
-type RoundPhase = "Wild Card" | "Prelims" | "Finals";
+type RoundPhase = "Wild Card" | "Prelims" | "Semi-Finals" | "Finals";
 
 type ChampionshipOptionRow = {
   division: string | null;
@@ -124,6 +132,16 @@ type TableSortKey =
   | "lastCompDate"
   | "lastCompScore";
 
+type PostSortKey =
+  | "rank"
+  | "program"
+  | "team"
+  | "advanced"
+  | "ecs_average"
+  | "summit_score"
+  | "score_delta"
+  | "nailed_it";
+
 function formatScore(value: number | null | undefined) {
   if (value == null || Number.isNaN(value)) return "--";
   return value.toFixed(3);
@@ -132,6 +150,22 @@ function formatScore(value: number | null | undefined) {
 function formatPercent(value: number | null | undefined) {
   if (value == null || Number.isNaN(value)) return "--";
   return `${Math.round(value)}%`;
+}
+
+function nailedItRating(delta: number | null | undefined) {
+  if (delta == null || Number.isNaN(delta)) return "—";
+
+  const abs = Math.abs(delta);
+
+  if (abs <= 0.1) return "🔥🔥🔥";
+  if (abs <= 0.25) return "🔥🔥";
+  if (abs <= 0.5) return "🔥";
+  return "—";
+}
+
+function absDeltaValue(delta: number | null | undefined) {
+  if (delta == null || Number.isNaN(delta)) return null;
+  return Math.abs(delta);
 }
 
 function formatDate(value: string | null | undefined) {
@@ -316,7 +350,7 @@ function PostSummitTooltip({ active, payload, label }: any) {
 
 export default function SummitBuilderPage() {
   const [selectedExperienceKey, setSelectedExperienceKey] =
-    useState<SummitExperienceKey>("D2_2026");
+    useState<SummitExperienceKey>("SUMMIT_2026");
   const selectedExperience = SUMMIT_EXPERIENCES[selectedExperienceKey];
 
   const [session, setSession] = useState<any>(null);
@@ -337,6 +371,7 @@ export default function SummitBuilderPage() {
   const [selectedPostDivision, setSelectedPostDivision] = useState("");
   const [selectedPostRound, setSelectedPostRound] = useState<RoundPhase>("Finals");
   const [postResults, setPostResults] = useState<ChampionshipResultWithEcsRow[]>([]);
+  const [advancedTeamIds, setAdvancedTeamIds] = useState<string[]>([]);
   const [postLoading, setPostLoading] = useState(false);
   const [postError, setPostError] = useState("");
   const [showPostEcsAverage, setShowPostEcsAverage] = useState(true);
@@ -366,6 +401,8 @@ export default function SummitBuilderPage() {
   const [expandedTeams, setExpandedTeams] = useState<string[]>([]);
   const [tableSortKey, setTableSortKey] = useState<TableSortKey>("avgScore");
   const [tableSortDir, setTableSortDir] = useState<"asc" | "desc">("desc");
+  const [postSortKey, setPostSortKey] = useState<PostSortKey>("rank");
+  const [postSortDir, setPostSortDir] = useState<"asc" | "desc">("asc");
 
   useEffect(() => {
     let mounted = true;
@@ -544,7 +581,7 @@ export default function SummitBuilderPage() {
       const roundsByDivision: Record<string, string[]> = {};
       for (const division of divisions) {
         const rawRounds = Array.from(roundMap[division] ?? []);
-        roundsByDivision[division] = ["Finals", "Prelims", "Wild Card"].filter((round) =>
+        roundsByDivision[division] = ["Finals", "Semi-Finals", "Prelims", "Wild Card"].filter((round) =>
           rawRounds.includes(round)
         );
       }
@@ -578,50 +615,49 @@ export default function SummitBuilderPage() {
     }
   }, [selectedExperience.mode, selectedPostDivision, selectedPostRound, postRoundsByDivision]);
 
-  useEffect(() => {
-    async function loadPostResults() {
-      if (
-        selectedExperience.mode !== "post" ||
-        !selectedExperience.championshipEventId ||
-        !selectedPostDivision ||
-        !selectedPostRound
-      ) {
-        setPostResults([]);
-        return;
-      }
-
-      setPostLoading(true);
-      setPostError("");
-
-      const { data, error } = await supabase
-        .from("v_championship_results_with_ecs")
-        .select(
-          "event_id, event_name, division, round, rank, program, team, team_id, summit_score, ecs_average, score_delta"
-        )
-        .eq("event_id", selectedExperience.championshipEventId)
-        .eq("division", selectedPostDivision)
-        .eq("round", selectedPostRound)
-        .order("rank", { ascending: true });
-
-      if (error) {
-        console.error("Failed to load post-Summit results:", error);
-        setPostError("Could not load Summit results.");
-        setPostResults([]);
-        setPostLoading(false);
-        return;
-      }
-
-      setPostResults((data ?? []) as ChampionshipResultWithEcsRow[]);
-      setPostLoading(false);
+  async function loadPostResults() {
+    if (
+      selectedExperience.mode !== "post" ||
+      !selectedExperience.championshipEventId ||
+      !selectedPostDivision ||
+      !selectedPostRound
+    ) {
+      setPostResults([]);
+      setAdvancedTeamIds([]);
+      return;
     }
 
-    loadPostResults();
-  }, [
-    selectedExperience.mode,
-    selectedExperience.championshipEventId,
-    selectedPostDivision,
-    selectedPostRound,
-  ]);
+    setPostLoading(true);
+    setPostError("");
+
+    const { data, error } = await supabase
+      .from("v_championship_results_with_ecs")
+      .select(
+        "event_id, event_name, division, round, rank, program, team, team_id, summit_score, ecs_average, score_delta"
+      )
+      .eq("event_id", selectedExperience.championshipEventId)
+      .eq("division", selectedPostDivision)
+      .order("rank", { ascending: true });
+
+    if (error) {
+      console.error("Failed to load post-Summit results:", error);
+      setPostError("Could not load Summit results.");
+      setPostResults([]);
+      setAdvancedTeamIds([]);
+      setPostLoading(false);
+      return;
+    }
+
+    const allRows = (data ?? []) as ChampionshipResultWithEcsRow[];
+    const selectedRows = allRows.filter((row) => row.round === selectedPostRound);
+    const finalsIds = allRows
+      .filter((row) => row.round === "Finals" && row.team_id)
+      .map((row) => String(row.team_id));
+
+    setPostResults(selectedRows);
+    setAdvancedTeamIds(Array.from(new Set(finalsIds)));
+    setPostLoading(false);
+  }
 
   useEffect(() => {
     if (!selectedDivision) return;
@@ -974,6 +1010,17 @@ export default function SummitBuilderPage() {
     }
   }
 
+  function sortPostTableBy(key: PostSortKey) {
+    if (!isPremium) return;
+
+    if (postSortKey === key) {
+      setPostSortDir((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setPostSortKey(key);
+      setPostSortDir(key === "rank" || key === "program" || key === "team" || key === "nailed_it" ? "asc" : "desc");
+    }
+  }
+
   function toggleExpanded(teamId: string) {
     setExpandedTeams((prev) =>
       prev.includes(teamId)
@@ -1041,10 +1088,15 @@ export default function SummitBuilderPage() {
     setSelectedExperienceKey(nextKey);
     setLoadStatus("idle");
     setLoadMessage("");
+    setPostResults([]);
+    setAdvancedTeamIds([]);
 
     if (SUMMIT_EXPERIENCES[nextKey].mode === "post") {
       setPostError("");
+      setSelectedPostDivision("");
       setSelectedPostRound("Finals");
+      setPostDivisions([]);
+      setPostRoundsByDivision({});
     }
   }
 
@@ -1264,24 +1316,133 @@ export default function SummitBuilderPage() {
       name: `${row.program ?? ""} - ${row.team ?? ""}`,
       teamLabel: row.team ?? "Unknown Team",
       programLabel: row.program ?? "",
-      ecsAverage: typeof row.ecs_average === "number" ? row.ecs_average : 0,
-      summitScore: typeof row.summit_score === "number" ? row.summit_score : 0,
+      ecsAverage: typeof row.ecs_average === "number" ? row.ecs_average : null,
+      summitScore: typeof row.summit_score === "number" ? row.summit_score : null,
       rank: row.rank ?? null,
     }))
-    .filter((row) => row.ecsAverage > 0 || row.summitScore > 0);
+    .filter((row) => row.ecsAverage != null || row.summitScore != null);
 
   const postScoreValues = postChartData.flatMap((row) =>
-    [
-      showPostEcsAverage ? row.ecsAverage : 0,
-      showPostSummitScore ? row.summitScore : 0,
-    ].filter((value) => value > 0)
-  );
+  [
+    showPostEcsAverage ? row.ecsAverage : null,
+    showPostSummitScore ? row.summitScore : null,
+  ].filter((value): value is number => value != null && value > 0)
+);
   const postScoreDomain: [number, number] = postScoreValues.length
-    ? [
-        Math.floor((Math.min(...postScoreValues) - 0.5) * 1000) / 1000,
-        Math.ceil((Math.max(...postScoreValues) + 0.5) * 1000) / 1000,
-      ]
-    : [0, 100];
+  ? [
+      Number((Math.min(...postScoreValues) - 1).toFixed(1)),
+      Number((Math.max(...postScoreValues) + 0.3).toFixed(1)),
+    ]
+  : [85, 100];
+
+  const isFinalsRound = selectedPostRound === "Finals";
+  const advancedTeamSet = useMemo(() => new Set(advancedTeamIds), [advancedTeamIds]);
+
+  const ecsFavorite = useMemo(() => {
+    if (!isFinalsRound || !postResults.length) return null;
+
+    return [...postResults]
+      .filter((row) => typeof row.ecs_average === "number")
+      .sort((a, b) => Number(b.ecs_average) - Number(a.ecs_average))[0] ?? null;
+  }, [isFinalsRound, postResults]);
+
+  const ecsDarkhorse = useMemo(() => {
+    if (!isFinalsRound || !postResults.length) return null;
+
+    const favoriteTeamId = ecsFavorite?.team_id ? String(ecsFavorite.team_id) : null;
+
+    const eligible = [...postResults]
+      .filter((row) => typeof row.score_delta === "number")
+      .filter((row) => Number(row.score_delta) > 0)
+      .filter((row) => !favoriteTeamId || String(row.team_id ?? "") !== favoriteTeamId)
+      .filter((row) => row.rank !== 1);
+
+    return eligible.sort((a, b) => Number(b.score_delta) - Number(a.score_delta))[0]
+      ?? [...postResults]
+        .filter((row) => typeof row.score_delta === "number")
+        .sort((a, b) => Number(b.score_delta) - Number(a.score_delta))[0]
+      ?? null;
+  }, [isFinalsRound, postResults, ecsFavorite]);
+
+  const closestCall = useMemo(() => {
+    if (!isFinalsRound || !postResults.length) return null;
+
+    return [...postResults]
+      .filter((row) => typeof row.score_delta === "number")
+      .sort((a, b) => Math.abs(Number(a.score_delta)) - Math.abs(Number(b.score_delta)))[0] ?? null;
+  }, [isFinalsRound, postResults]);
+
+  const sortedPostResults = useMemo(() => {
+    return [...postResults].sort((a, b) => {
+      const aRaw = (a as any)[postSortKey];
+      const bRaw = (b as any)[postSortKey];
+
+      if (postSortKey === "program" || postSortKey === "team") {
+        const av = String(aRaw ?? "");
+        const bv = String(bRaw ?? "");
+        return postSortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
+      }
+
+      if (postSortKey === "advanced") {
+        const av = a.team_id && advancedTeamSet.has(String(a.team_id)) ? 1 : 0;
+        const bv = b.team_id && advancedTeamSet.has(String(b.team_id)) ? 1 : 0;
+        return postSortDir === "asc" ? av - bv : bv - av;
+      }
+
+      if (postSortKey === "nailed_it") {
+        const av = absDeltaValue(a.score_delta) ?? (postSortDir === "asc" ? Infinity : -Infinity);
+        const bv = absDeltaValue(b.score_delta) ?? (postSortDir === "asc" ? Infinity : -Infinity);
+        return postSortDir === "asc" ? av - bv : bv - av;
+      }
+
+      const av = typeof aRaw === "number" ? aRaw : postSortDir === "asc" ? Infinity : -Infinity;
+      const bv = typeof bRaw === "number" ? bRaw : postSortDir === "asc" ? Infinity : -Infinity;
+
+      return postSortDir === "asc" ? av - bv : bv - av;
+    });
+  }, [postResults, postSortKey, postSortDir, advancedTeamSet]);
+
+  const freePostResults = useMemo(() => {
+    return [...postResults]
+      .sort((a, b) => {
+        const av = typeof a.rank === "number" ? a.rank : Infinity;
+        const bv = typeof b.rank === "number" ? b.rank : Infinity;
+        return av - bv;
+      })
+      .slice(0, POST_FREE_ROW_LIMIT);
+  }, [postResults]);
+
+  const visiblePostResults = isPremium ? sortedPostResults : freePostResults;
+  const hiddenPostResultCount = Math.max(0, postResults.length - POST_FREE_ROW_LIMIT);
+
+  const scorecardCards = [
+    {
+      title: "ECS Favorite",
+      subtitle: "Highest ECS average entering Finals",
+      row: ecsFavorite,
+    },
+    {
+      title: "ECS Darkhorse",
+      subtitle: "Outperformed ECS expectations most",
+      row: ecsDarkhorse,
+    },
+    {
+      title: "Nailed It",
+      subtitle: "Closest ECS read to Finals score",
+      row: closestCall,
+    },
+  ];
+
+  function placementClass(rank: number | null | undefined) {
+    if (rank === 1) return "text-yellow-300";
+    if (typeof rank === "number" && rank <= 3) return "text-slate-200";
+    return "text-amber-200";
+  }
+
+  function signedDelta(value: number | null | undefined) {
+    if (typeof value !== "number") return "--";
+    return `${value >= 0 ? "+" : ""}${value.toFixed(3)}`;
+  }
 
   const activeTitle =
     activeView === "Finals"
@@ -1342,14 +1503,18 @@ export default function SummitBuilderPage() {
         {selectedExperience.mode === "post" ? (
           <section className="space-y-6">
             <div className="rounded-2xl border border-amber-300/25 bg-[#1A1024] p-4 shadow-[0_0_30px_rgba(245,158,11,0.08)]">
-              <div className="grid grid-cols-1 lg:grid-cols-[1fr_220px] gap-3 items-end">
+              <div className="grid grid-cols-1 lg:grid-cols-[1fr_220px_220px] gap-3 items-end">
                 <div>
                   <label className="block text-xs uppercase tracking-[0.2em] text-amber-100/60 mb-2">
                     Division
                   </label>
                   <select
                     value={selectedPostDivision}
-                    onChange={(e) => setSelectedPostDivision(e.target.value)}
+                    onChange={(e) => {
+                      setSelectedPostDivision(e.target.value);
+                      setPostResults([]);
+                      setAdvancedTeamIds([]);
+                    }}
                     className="w-full rounded-md bg-black/40 border border-amber-300/20 px-3 py-2 text-sm outline-none focus:border-amber-300/70"
                   >
                     {postDivisions.map((division) => (
@@ -1366,7 +1531,11 @@ export default function SummitBuilderPage() {
                   </label>
                   <select
                     value={selectedPostRound}
-                    onChange={(e) => setSelectedPostRound(e.target.value as RoundPhase)}
+                    onChange={(e) => {
+                      setSelectedPostRound(e.target.value as RoundPhase);
+                      setPostResults([]);
+                      setAdvancedTeamIds([]);
+                    }}
                     className="w-full rounded-md bg-black/40 border border-amber-300/20 px-3 py-2 text-sm outline-none focus:border-amber-300/70"
                   >
                     {postRoundOptions.map((round) => (
@@ -1376,38 +1545,207 @@ export default function SummitBuilderPage() {
                     ))}
                   </select>
                 </div>
+
+                <button
+                  onClick={loadPostResults}
+                  disabled={postLoading || !selectedPostDivision || !selectedPostRound}
+                  className="w-full rounded-xl border border-amber-300/70 bg-amber-300/15 px-6 py-2 text-sm font-bold text-amber-100 shadow-[0_0_22px_rgba(250,204,21,0.18)] transition-all hover:bg-amber-300/25 hover:shadow-[0_0_30px_rgba(250,204,21,0.28)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {postLoading ? "Loading..." : "Load Results →"}
+                </button>
               </div>
 
               {postError && <div className="mt-3 text-sm text-red-300">{postError}</div>}
             </div>
 
-            {!isPremium ? (
-              <div className="rounded-2xl border border-amber-300/30 bg-[#1A1024] p-8 text-center shadow-[0_0_30px_rgba(245,158,11,0.10)]">
-                <div className="text-xs uppercase tracking-[0.25em] text-amber-300">
-                  Premium Feature
+            <>
+            {isFinalsRound && postResults.length > 0 && (
+              <div className="rounded-2xl border border-amber-300/25 bg-[#1A1024] p-4 shadow-[0_0_30px_rgba(245,158,11,0.08)]">
+                <div>
+                  <div className="text-xs uppercase tracking-[0.24em] text-amber-300">
+                    Summit Scorecard
+                  </div>
+                  <h2 className="mt-1 text-xl font-bold text-white">
+                    {selectedPostDivision} Finals
+                  </h2>
+                  <p className="mt-1 text-xs text-amber-100/55">
+                    ECS view of the Finals field
+                  </p>
                 </div>
 
-                <h2 className="mt-3 text-3xl font-bold text-white">
-                  See how ECS predicted Summit 👀
-                </h2>
+                <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+                  {scorecardCards.map((card) => {
+                    const row = card.row;
+                    const rank = typeof row?.rank === "number" ? row.rank : null;
+                    const delta = typeof row?.score_delta === "number" ? row.score_delta : null;
 
-                <p className="mx-auto mt-3 max-w-2xl text-sm text-amber-100/70">
-                  Compare ECS regular-season averages against actual Summit results across every division and round.
-                </p>
+                    return (
+                      <div
+                        key={card.title}
+                        className={`rounded-xl border bg-black/20 p-4 transition hover:border-amber-300/40 hover:bg-amber-300/5 ${
+                          card.title === "ECS Favorite"
+                            ? "border-amber-300/35 shadow-[0_0_20px_rgba(245,158,11,0.10)]"
+                            : "border-white/10"
+                        }`}
+                      >
+                        <div className="text-sm font-bold text-white">
+                          {card.title}
+                        </div>
 
-                <a
-                  href={lockedHref}
-                  className="mt-6 inline-flex items-center justify-center rounded-xl border border-amber-300/80 bg-amber-300/15 px-6 py-3 text-sm font-bold text-amber-100 shadow-[0_0_22px_rgba(250,204,21,0.22)] transition-all hover:bg-amber-300/25 hover:shadow-[0_0_30px_rgba(250,204,21,0.38)] active:scale-[0.98]"
-                >
-                  Unlock Summit Results →
-                </a>
+                        {card.title === "ECS Favorite" && rank === 1 && (
+                          <div className="mt-2 inline-flex rounded-full border border-amber-300/60 bg-amber-300/15 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-amber-200">
+                            🏆 ECS called the champion
+                          </div>
+                        )}
 
-                <div className="mt-5 rounded-xl border border-amber-300/15 bg-black/20 p-4 text-left text-xs text-amber-100/65">
-                  Premium unlocks the full ECS Average vs Summit Results chart, result table, round filters, and division-by-division proof.
+                        <div className="mt-3">
+                          <div className="text-[10px] uppercase tracking-[0.08em] text-white/50 truncate">
+                            {row?.program ?? "Program"}
+                          </div>
+                          <div className="mt-1 text-2xl font-extrabold leading-tight text-amber-300 truncate">
+                            {row?.team ?? "Team"}
+                          </div>
+                          <div className="mt-1 text-[11px] text-amber-100/55">
+                            {card.subtitle}
+                          </div>
+                        </div>
+
+                        <div className="mt-4 grid grid-cols-2 gap-x-5 gap-y-2 text-xs">
+                          <div>
+                            <div className="text-[10px] uppercase tracking-[0.12em] text-white/40">ECS Avg</div>
+                            <div className="mt-0.5 font-black text-white">{formatScore(row?.ecs_average)}</div>
+                          </div>
+                          <div>
+                            <div className="text-[10px] uppercase tracking-[0.12em] text-white/40">Finals</div>
+                            <div className="mt-0.5 font-black text-amber-300">{formatScore(row?.summit_score)}</div>
+                          </div>
+                          <div>
+                            <div className="text-[10px] uppercase tracking-[0.12em] text-white/40">Delta</div>
+                            <div className={`mt-0.5 font-black ${delta == null ? "text-white/60" : delta >= 0 ? "text-emerald-300" : "text-red-300"}`}>
+                              {signedDelta(delta)}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-[10px] uppercase tracking-[0.12em] text-white/40">Place</div>
+                            <div className={`mt-0.5 font-black ${placementClass(rank)}`}>
+                              {rank != null ? `#${rank}` : "--"}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
-            ) : (
-              <>
+            )}
+
+            <div className="rounded-2xl border border-amber-300/25 bg-[#1A1024] p-6 shadow-[0_0_30px_rgba(245,158,11,0.08)]">
+              <h2 className="text-xl font-semibold">Results Detail</h2>
+              <p className="text-sm text-amber-100/65">
+                {isPremium
+                  ? "Click any column heading to sort."
+                  : `Top ${POST_FREE_ROW_LIMIT} shown free. Premium unlocks all rows and sortable columns.`}
+              </p>
+
+              <div className="mt-6 overflow-x-auto rounded-xl border border-amber-300/15 bg-[#0C0710]">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-amber-300/10 text-amber-100/80">
+                    <tr>
+                      <th className="px-4 py-3 text-left cursor-pointer select-none" onClick={() => sortPostTableBy("rank")}>Rank {postSortKey === "rank" ? (postSortDir === "asc" ? "↑" : "↓") : ""}</th>
+                      <th className="px-4 py-3 text-left cursor-pointer select-none" onClick={() => sortPostTableBy("program")}>Program {postSortKey === "program" ? (postSortDir === "asc" ? "↑" : "↓") : ""}</th>
+                      <th className="px-4 py-3 text-left cursor-pointer select-none" onClick={() => sortPostTableBy("team")}>Team {postSortKey === "team" ? (postSortDir === "asc" ? "↑" : "↓") : ""}</th>
+                      {!isFinalsRound && (
+                        <th className="px-4 py-3 text-left cursor-pointer select-none" onClick={() => sortPostTableBy("advanced")}>Advanced {postSortKey === "advanced" ? (postSortDir === "asc" ? "↑" : "↓") : ""}</th>
+                      )}
+                      <th className="px-4 py-3 text-left cursor-pointer select-none" onClick={() => sortPostTableBy("ecs_average")}>ECS Average {postSortKey === "ecs_average" ? (postSortDir === "asc" ? "↑" : "↓") : ""}</th>
+                      <th className="px-4 py-3 text-left cursor-pointer select-none" onClick={() => sortPostTableBy("summit_score")}>{isFinalsRound ? "Summit Result" : "Round Score"} {postSortKey === "summit_score" ? (postSortDir === "asc" ? "↑" : "↓") : ""}</th>
+                      <th className="px-4 py-3 text-left cursor-pointer select-none" onClick={() => sortPostTableBy("score_delta")}>Difference {postSortKey === "score_delta" ? (postSortDir === "asc" ? "↑" : "↓") : ""}</th>
+                      <th className="px-4 py-3 text-left cursor-pointer select-none" onClick={() => sortPostTableBy("nailed_it")}>Nailed It {postSortKey === "nailed_it" ? (postSortDir === "asc" ? "↑" : "↓") : ""}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visiblePostResults.map((row, index) => {
+                      const delta =
+                        typeof row.score_delta === "number" ? row.score_delta : null;
+
+                      return (
+                        <tr
+                          key={`${row.team_id ?? row.program}-${row.team}-${index}`}
+                          className="border-t border-amber-300/10 hover:bg-amber-300/5"
+                        >
+                          <td className="px-4 py-3 font-bold text-amber-300">
+                            {row.rank ?? "--"}
+                          </td>
+                          <td className="px-4 py-3 text-white/80">{row.program ?? "--"}</td>
+                          <td className="px-4 py-3 font-semibold text-white">{row.team ?? "--"}</td>
+                          {!isFinalsRound && (
+                            <td className="px-4 py-3 font-semibold">
+                              {row.team_id && advancedTeamSet.has(String(row.team_id)) ? (
+                                <span className="inline-flex items-center justify-center rounded-full border border-emerald-300/40 bg-emerald-300/10 px-2.5 py-1 text-sm font-bold text-emerald-300">
+                                  ✅
+                                </span>
+                              ) : (
+                                <span className="text-white/35">—</span>
+                              )}
+                            </td>
+                          )}
+                          <td className="px-4 py-3 text-white">
+                            {typeof row.ecs_average === "number"
+                              ? row.ecs_average.toFixed(3)
+                              : "No ECS data"}
+                          </td>
+                          <td className="px-4 py-3 font-semibold text-amber-300">
+                            {typeof row.summit_score === "number"
+                              ? row.summit_score.toFixed(3)
+                              : "--"}
+                          </td>
+                          <td
+                            className={`px-4 py-3 font-semibold ${
+                              delta == null
+                                ? "text-white/50"
+                                : delta >= 0
+                                  ? "text-emerald-300"
+                                  : "text-red-300"
+                            }`}
+                          >
+                            {delta == null ? "--" : delta >= 0 ? `+${delta.toFixed(3)}` : delta.toFixed(3)}
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="whitespace-nowrap text-lg leading-none">
+                              {nailedItRating(delta)}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+
+                {!isPremium && hiddenPostResultCount > 0 && (
+                  <div className="border-t border-amber-300/15 bg-black/25 p-5 text-center">
+                    <div className="text-sm font-bold text-amber-100">
+                      {hiddenPostResultCount} more teams are locked
+                    </div>
+                    <div className="mt-1 text-xs text-amber-100/60">
+                      Upgrade to unlock the full results table and sortable columns for this division.
+                    </div>
+                    <a
+                      href={lockedHref}
+                      className="mt-4 inline-flex items-center justify-center rounded-xl border border-amber-300/70 bg-amber-300/15 px-5 py-2 text-xs font-black text-amber-100 shadow-[0_0_18px_rgba(250,204,21,0.18)] transition-all hover:bg-amber-300/25 active:scale-[0.98]"
+                    >
+                      Unlock Full Results →
+                    </a>
+                  </div>
+                )}
+
+                {!postLoading && postResults.length === 0 && (
+                  <div className="p-6 text-center text-amber-100/60">
+                    No results found for this division and round.
+                  </div>
+                )}
+              </div>
+            </div>
+
             <div className="rounded-2xl border border-amber-300/25 bg-[#1A1024] p-6 shadow-[0_0_30px_rgba(245,158,11,0.08)]">
               <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
                 <div>
@@ -1451,151 +1789,103 @@ export default function SummitBuilderPage() {
                 </div>
               </div>
 
-              <div
-                className="mt-6 rounded-xl border border-amber-300/15 bg-[#0C0710] p-4"
-                style={{ height: `${Math.max(360, postChartData.length * 70)}px` }}
-              >
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
-                    data={postChartData}
-                    layout="vertical"
-                    margin={{ top: 8, right: 20, left: 10, bottom: 8 }}
-                    barCategoryGap={6}
-                  >
-                    <CartesianGrid stroke="rgba(245,158,11,0.08)" horizontal={false} />
-                    <XAxis
-                      type="number"
-                      domain={postScoreDomain}
-                      tick={{ fill: "rgba(255,255,255,0.65)", fontSize: 12 }}
-                      axisLine={{ stroke: "rgba(245,158,11,0.16)" }}
-                      tickLine={{ stroke: "rgba(245,158,11,0.16)" }}
-                    />
-                    <YAxis
-                      type="category"
-                      dataKey="name"
-                      width={250}
-                      tick={(props: any) => {
-                        const { x, y, payload } = props;
-                        const fullName = String(payload?.value ?? "");
-                        const { program, team } = splitProgramTeam(fullName);
+              {isPremium ? (
+                <div
+                  className="mt-6 rounded-xl border border-amber-300/15 bg-[#0C0710] p-4"
+                  style={{ height: `${Math.max(360, postChartData.length * 70)}px` }}
+                >
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                      data={postChartData}
+                      layout="vertical"
+                      margin={{ top: 8, right: 20, left: 10, bottom: 8 }}
+                      barCategoryGap={6}
+                    >
+                      <CartesianGrid stroke="rgba(245,158,11,0.08)" horizontal={false} />
+                      <XAxis
+                        type="number"
+                        domain={postScoreDomain}
+                        tick={{ fill: "rgba(255,255,255,0.65)", fontSize: 12 }}
+                        axisLine={{ stroke: "rgba(245,158,11,0.16)" }}
+                        tickLine={{ stroke: "rgba(245,158,11,0.16)" }}
+                      />
+                      <YAxis
+                        type="category"
+                        dataKey="name"
+                        width={250}
+                        tick={(props: any) => {
+                          const { x, y, payload } = props;
+                          const fullName = String(payload?.value ?? "");
+                          const { program, team } = splitProgramTeam(fullName);
 
-                        return (
-                          <g transform={`translate(${x},${y})`}>
-                            <text
-                              x={-10}
-                              y={-2}
-                              textAnchor="end"
-                              fill="rgba(255,255,255,0.70)"
-                              fontSize="11"
-                            >
-                              {program}
-                            </text>
-                            {team && (
+                          return (
+                            <g transform={`translate(${x},${y})`}>
                               <text
                                 x={-10}
-                                y={12}
+                                y={-2}
                                 textAnchor="end"
-                                fill="rgba(255,255,255,0.95)"
-                                fontSize="12"
-                                fontWeight="700"
+                                fill="rgba(255,255,255,0.70)"
+                                fontSize="11"
                               >
-                                {team}
+                                {program}
                               </text>
-                            )}
-                          </g>
-                        );
-                      }}
-                    />
-                    <Tooltip
-                      cursor={{ fill: "rgba(255,255,255,0.04)" }}
-                      content={<PostSummitTooltip />}
-                    />
-                    {showPostEcsAverage && (
-                      <Bar
-                        dataKey="ecsAverage"
-                        fill="#3A3A3A"
-                        stroke="#f5f5f5"
-                        strokeWidth={1}
-                        radius={[0, 6, 6, 0]}
+                              {team && (
+                                <text
+                                  x={-10}
+                                  y={12}
+                                  textAnchor="end"
+                                  fill="rgba(255,255,255,0.95)"
+                                  fontSize="12"
+                                  fontWeight="700"
+                                >
+                                  {team}
+                                </text>
+                              )}
+                            </g>
+                          );
+                        }}
                       />
-                    )}
-                    {showPostSummitScore && (
-                      <Bar dataKey="summitScore" fill="#f59e0b" radius={[0, 6, 6, 0]} />
-                    )}
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-amber-300/25 bg-[#1A1024] p-6 shadow-[0_0_30px_rgba(245,158,11,0.08)]">
-              <h2 className="text-xl font-semibold">Results Detail</h2>
-              <p className="text-sm text-amber-100/65">
-                Sorted by actual Summit rank.
-              </p>
-
-              <div className="mt-6 overflow-x-auto rounded-xl border border-amber-300/15 bg-[#0C0710]">
-                <table className="min-w-full text-sm">
-                  <thead className="bg-amber-300/10 text-amber-100/80">
-                    <tr>
-                      <th className="px-4 py-3 text-left">Rank</th>
-                      <th className="px-4 py-3 text-left">Program</th>
-                      <th className="px-4 py-3 text-left">Team</th>
-                      <th className="px-4 py-3 text-left">ECS Average</th>
-                      <th className="px-4 py-3 text-left">Summit Result</th>
-                      <th className="px-4 py-3 text-left">Difference</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {postResults.map((row, index) => {
-                      const delta =
-                        typeof row.score_delta === "number" ? row.score_delta : null;
-
-                      return (
-                        <tr
-                          key={`${row.team_id ?? row.program}-${row.team}-${index}`}
-                          className="border-t border-amber-300/10 hover:bg-amber-300/5"
-                        >
-                          <td className="px-4 py-3 font-bold text-amber-300">
-                            {row.rank ?? "--"}
-                          </td>
-                          <td className="px-4 py-3 text-white/80">{row.program ?? "--"}</td>
-                          <td className="px-4 py-3 font-semibold text-white">{row.team ?? "--"}</td>
-                          <td className="px-4 py-3 text-white">
-                            {typeof row.ecs_average === "number"
-                              ? row.ecs_average.toFixed(3)
-                              : "No ECS data"}
-                          </td>
-                          <td className="px-4 py-3 font-semibold text-amber-300">
-                            {typeof row.summit_score === "number"
-                              ? row.summit_score.toFixed(3)
-                              : "--"}
-                          </td>
-                          <td
-                            className={`px-4 py-3 font-semibold ${
-                              delta == null
-                                ? "text-white/50"
-                                : delta >= 0
-                                  ? "text-emerald-300"
-                                  : "text-red-300"
-                            }`}
-                          >
-                            {delta == null ? "--" : delta >= 0 ? `+${delta.toFixed(3)}` : delta.toFixed(3)}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-
-                {!postLoading && postResults.length === 0 && (
-                  <div className="p-6 text-center text-amber-100/60">
-                    No results found for this division and round.
+                      <Tooltip
+                        cursor={{ fill: "rgba(255,255,255,0.04)" }}
+                        content={<PostSummitTooltip />}
+                      />
+                      {showPostEcsAverage && (
+                        <Bar
+                          dataKey="ecsAverage"
+                          fill="#3A3A3A"
+                          stroke="#f5f5f5"
+                          strokeWidth={1}
+                          radius={[0, 6, 6, 0]}
+                        />
+                      )}
+                      {showPostSummitScore && (
+                        <Bar dataKey="summitScore" fill="#f59e0b" radius={[0, 6, 6, 0]} />
+                      )}
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div className="mt-6 rounded-xl border border-amber-300/20 bg-[#0C0710] p-8 text-center shadow-[0_0_24px_rgba(245,158,11,0.08)]">
+                  <div className="text-xs uppercase tracking-[0.24em] text-amber-300">
+                    Premium Chart
                   </div>
-                )}
-              </div>
+                  <h3 className="mt-3 text-2xl font-bold text-white">
+                    Unlock the full ECS vs Summit chart
+                  </h3>
+                  <p className="mx-auto mt-2 max-w-2xl text-sm text-amber-100/65">
+                    Free users can preview the scorecards and Top {POST_FREE_ROW_LIMIT}. Premium unlocks the full table, sortable results, and chart view.
+                  </p>
+                  <a
+                    href={lockedHref}
+                    className="mt-5 inline-flex items-center justify-center rounded-xl border border-amber-300/70 bg-amber-300/15 px-5 py-2 text-xs font-black text-amber-100 shadow-[0_0_18px_rgba(250,204,21,0.18)] transition-all hover:bg-amber-300/25 active:scale-[0.98]"
+                  >
+                    Unlock Chart →
+                  </a>
+                </div>
+              )}
             </div>
-              </>
-            )}
+
+            </>
           </section>
         ) : (
           <>
