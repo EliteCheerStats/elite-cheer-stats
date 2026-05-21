@@ -22,51 +22,47 @@ export default function TeamSearchPage() {
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<TeamHit[]>([]);
   const [loading, setLoading] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
   const [error, setError] = useState<any>(null);
 
   const [session, setSession] = useState<any>(null);
   const [followedIds, setFollowedIds] = useState<Set<string>>(new Set());
 
   const q = query.trim();
-  const lastUpdated = new Date().toLocaleDateString();
-
-useEffect(() => {
-  async function loadSession() {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-
-    setSession(session);
-
-    if (!session?.user) return;
-
-    const { data } = await supabase
-      .from("user_followed_teams")
-      .select("team_id")
-      .eq("user_id", session.user.id);
-
-    if (data) {
-      setFollowedIds(new Set(data.map((d) => d.team_id)));
-    }
-  }
-
-  loadSession();
-}, []);
-
-
-
-useEffect(() => {
-  trackUserEvent({
-    eventType: "team_search_view",
-    page: "/team",
-  });
-}, []);
 
   useEffect(() => {
-  let cancelled = false;
+    async function loadSession() {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
-  async function run() {
+      setSession(session);
+
+      if (!session?.user) return;
+
+      const { data } = await supabase
+        .from("user_followed_teams")
+        .select("team_id")
+        .eq("user_id", session.user.id);
+
+      if (data) {
+        setFollowedIds(new Set(data.map((d) => d.team_id)));
+      }
+    }
+
+    loadSession();
+  }, []);
+
+  useEffect(() => {
+    trackUserEvent({
+      eventType: "team_search_view",
+      page: "/team",
+    });
+  }, []);
+
+  async function runSearch() {
     setError(null);
+    setHasSearched(true);
 
     const search = q.trim();
 
@@ -91,8 +87,6 @@ useEffect(() => {
       .or(`team.ilike.%${search}%,program.ilike.%${search}%`)
       .limit(100);
 
-    if (cancelled) return;
-
     if (error) {
       const message = String(error.message ?? "");
 
@@ -101,6 +95,7 @@ useEffect(() => {
         message.includes("aborted") ||
         message.includes("Lock was stolen by another request")
       ) {
+        setLoading(false);
         return;
       }
 
@@ -139,6 +134,7 @@ useEffect(() => {
         if (!(existing as any).event_ids) {
           (existing as any).event_ids = new Set<string>();
         }
+
         if (eventId) {
           (existing as any).event_ids.add(eventId);
           existing.event_count = (existing as any).event_ids.size;
@@ -148,6 +144,7 @@ useEffect(() => {
           if (!existing.first_event_date || weekendDate < existing.first_event_date) {
             existing.first_event_date = weekendDate;
           }
+
           if (!existing.last_event_date || weekendDate > existing.last_event_date) {
             existing.last_event_date = weekendDate;
             existing.last_week = weekendDate;
@@ -172,107 +169,101 @@ useEffect(() => {
     setLoading(false);
 
     void trackUserEvent({
-  eventType: "team_search_submit",
-  page: "/team",
-  metadata: {
-    search_term: search,
-    result_count: list.length,
-  },
-});
-
-// 👇 ADD THIS
-if (typeof window !== "undefined" && (window as any).fbq) {
-  (window as any).fbq('track', 'Search', {
-    search_string: search,
-  });
-}
-  }
-
-  run();
-
-  return () => {
-    cancelled = true;
-  };
-}, [q]);
-
-  async function toggleFollow(teamId: string, teamName: string) {
-  if (!session?.user) {
-    window.location.href = `/login?next=/team`;
-    return;
-  }
-
-  const isFollowing = followedIds.has(teamId);
-
-  try {
-    if (isFollowing) {
-      const { error } = await supabase
-        .from("user_followed_teams")
-        .delete()
-        .eq("user_id", session.user.id)
-        .eq("team_id", teamId);
-
-      if (error) {
-        console.error("Unfollow error:", error);
-        alert(error.message || "Failed to unfollow team.");
-        return;
-      }
-
-      setFollowedIds((prev) => {
-        const next = new Set(prev);
-        next.delete(teamId);
-        return next;
-      });
-    } else {
-  const { error } = await supabase
-    .from("user_followed_teams")
-    .insert({
-      user_id: session.user.id,
-      team_id: teamId,
+      eventType: "team_search_submit",
+      page: "/team",
+      metadata: {
+        search_term: search,
+        result_count: list.length,
+      },
     });
 
-  if (error) {
-    console.error("Follow error:", error);
-    alert(error.message || "Failed to follow team.");
-    return;
+    if (typeof window !== "undefined" && (window as any).fbq) {
+      (window as any).fbq("track", "Search", {
+        search_string: search,
+      });
+    }
   }
 
-  setFollowedIds((prev) => {
-    const next = new Set(prev);
-    next.add(teamId);
-    return next;
-  });
+  async function toggleFollow(teamId: string, teamName: string) {
+    if (!session?.user) {
+      window.location.href = `/login?next=/team`;
+      return;
+    }
 
-  // ✅ tracking (safe placement)
-  void trackUserEvent({
-    eventType: "team_followed",
-    page: "/team",
-    teamId,
-    metadata: {
-      team_name: teamName,
-    },
-  });
-}
-  } catch (err) {
-    console.error("Toggle follow failed:", err);
-    alert("Something went wrong. Please try again.");
+    const isFollowing = followedIds.has(teamId);
+
+    try {
+      if (isFollowing) {
+        const { error } = await supabase
+          .from("user_followed_teams")
+          .delete()
+          .eq("user_id", session.user.id)
+          .eq("team_id", teamId);
+
+        if (error) {
+          console.error("Unfollow error:", error);
+          alert(error.message || "Failed to unfollow team.");
+          return;
+        }
+
+        setFollowedIds((prev) => {
+          const next = new Set(prev);
+          next.delete(teamId);
+          return next;
+        });
+      } else {
+        const { error } = await supabase
+          .from("user_followed_teams")
+          .insert({
+            user_id: session.user.id,
+            team_id: teamId,
+          });
+
+        if (error) {
+          console.error("Follow error:", error);
+          alert(error.message || "Failed to follow team.");
+          return;
+        }
+
+        setFollowedIds((prev) => {
+          const next = new Set(prev);
+          next.add(teamId);
+          return next;
+        });
+
+        void trackUserEvent({
+          eventType: "team_followed",
+          page: "/team",
+          teamId,
+          metadata: {
+            team_name: teamName,
+          },
+        });
+      }
+    } catch (err) {
+      console.error("Toggle follow failed:", err);
+      alert("Something went wrong. Please try again.");
+    }
   }
-}
 
   const helperText = useMemo(() => {
-  if (q.length < 3) return "Type at least 4 characters to search teams.";
-  if (loading) return "Searching…";
-  if (error) return "Search error (see details below).";
-  return `${hits.length} unique team(s) found.`;
-}, [q.length, loading, error, hits.length]);
+    if (!hasSearched) return "Type at least 4 characters, then click Search.";
+    if (q.length < 4) return "Type at least 4 characters to search teams.";
+    if (loading) return "Searching…";
+    if (error) return "Search error (see details below).";
+    return `${hits.length} unique team(s) found.`;
+  }, [hasSearched, q.length, loading, error, hits.length]);
 
   return (
     <main style={{ padding: 24, fontFamily: "system-ui" }}>
       <h1 style={{ fontSize: 28, fontWeight: 800, marginBottom: 6 }}>
         Team Search
       </h1>
+
       <p style={{ marginTop: 0, opacity: 0.75 }}>
-        <b>Track your team!  ANY Team!</b>
+        <b>Track your team! ANY Team!</b>
       </p>
+
       <p className="mt-1 text-xs text-slate-400">
         Scores sourced from Varsity competition results.
       </p>
@@ -280,12 +271,41 @@ if (typeof window !== "undefined" && (window as any).fbq) {
       <div style={{ display: "grid", gap: 8, maxWidth: 720, marginTop: 14 }}>
         <label style={{ display: "grid", gap: 6 }}>
           <span style={{ fontWeight: 650 }}>Team name</span>
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="e.g., Lady Teal"
-            style={{ padding: "10px 12px", fontSize: 16 }}
-          />
+
+          <div style={{ display: "flex", gap: 8 }}>
+            <input
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setError(null);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  runSearch();
+                }
+              }}
+              placeholder="e.g., Lady Teal"
+              style={{ padding: "10px 12px", fontSize: 16, flex: 1 }}
+            />
+
+            <button
+              type="button"
+              onClick={runSearch}
+              disabled={loading}
+              style={{
+                padding: "10px 14px",
+                borderRadius: 10,
+                border: "1px solid #14b8a6",
+                background: "rgba(20,184,166,0.12)",
+                color: "#14b8a6",
+                fontWeight: 800,
+                cursor: loading ? "not-allowed" : "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {loading ? "Searching…" : "Search"}
+            </button>
+          </div>
         </label>
 
         <div style={{ opacity: 0.75 }}>{helperText}</div>
@@ -324,47 +344,50 @@ if (typeof window !== "undefined" && (window as any).fbq) {
               >
                 {`${h.program} ${h.team}`}
               </div>
+
               <div style={{ opacity: 0.75, fontSize: 13 }}>
                 Program: {h.program}
               </div>
+
               <div style={{ opacity: 0.75, fontSize: 13 }}>
-  Events: {h.event_count ?? 0} • Weekends: {h.first_event_date ?? "—"} → {h.last_event_date ?? "—"}
-</div>
+                Events: {h.event_count ?? 0} • Weekends:{" "}
+                {h.first_event_date ?? "—"} → {h.last_event_date ?? "—"}
+              </div>
             </div>
 
-           <div style={{ display: "flex", gap: 8 }}>
-  <button
-    onClick={() => toggleFollow(h.team_id, `${h.program} ${h.team}`)}
-    style={{
-      padding: "10px 12px",
-      borderRadius: 10,
-      border: "1px solid #14b8a6",
-      background: followedIds.has(h.team_id)
-        ? "rgba(20,184,166,0.15)"
-        : "transparent",
-      color: "#14b8a6",
-      fontWeight: 700,
-      cursor: "pointer",
-      whiteSpace: "nowrap",
-    }}
-  >
-    {followedIds.has(h.team_id) ? "Following" : "Follow"}
-  </button>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                onClick={() => toggleFollow(h.team_id, `${h.program} ${h.team}`)}
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 10,
+                  border: "1px solid #14b8a6",
+                  background: followedIds.has(h.team_id)
+                    ? "rgba(20,184,166,0.15)"
+                    : "transparent",
+                  color: "#14b8a6",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {followedIds.has(h.team_id) ? "Following" : "Follow"}
+              </button>
 
-  <Link
-    href={`/team/${h.team_id}`}
-    style={{
-      padding: "10px 12px",
-      borderRadius: 10,
-      border: "1px solid #ddd",
-      textDecoration: "none",
-      fontWeight: 700,
-      whiteSpace: "nowrap",
-    }}
-  >
-    View Team →
-  </Link>
-</div>
+              <Link
+                href={`/team/${h.team_id}`}
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 10,
+                  border: "1px solid #ddd",
+                  textDecoration: "none",
+                  fontWeight: 700,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                View Team →
+              </Link>
+            </div>
           </div>
         ))}
       </div>
