@@ -201,25 +201,26 @@ export default function TeamProfilePage() {
           const selectedTeam = String(eventRows[0]?.team ?? "").trim().toLowerCase();
 
           const { data: perfRes, error: perfError } = await supabase
-            .from("v_results_normalized")
-            .select(`
-              team,
-              program,
-              program_id,
-              team_id,
-              event_id,
-              weekend_date,
-              round,
-              round_raw,
-              round_phase,
-              raw_score,
-              deductions,
-              performance_score,
-              event_score
-            `)
-            .eq("team_id", currentTeamId)
-            .in("round_phase", ["Prelims", "Finals"])
-            .order("weekend_date", { ascending: true });
+  .from("v_results_normalized")
+  .select(`
+    team,
+    program,
+    program_id,
+    team_id,
+    event_id,
+    weekend_date,
+    round,
+    round_raw,
+    round_phase,
+    raw_score,
+    deductions,
+    performance_score,
+    event_score
+  `)
+  .eq("team_id", currentTeamId)
+  .in("event_id", eventIds)
+  .in("round_phase", ["Prelims", "Finals"])
+  .order("weekend_date", { ascending: true });
 
           if (perfError) console.error("Performance query failed:", perfError);
           else perfData = (perfRes ?? []).filter((r: any) => String(r.team ?? "").trim().toLowerCase() === selectedTeam);
