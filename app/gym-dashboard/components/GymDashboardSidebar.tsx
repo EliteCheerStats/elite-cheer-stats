@@ -12,7 +12,7 @@ const navItems = [
   { label: "Gym Overview", href: "/gym-dashboard" },
   { label: "Team Intelligence", href: "/gym-dashboard/team-intelligence" },
   { label: "Division Intelligence", href: "/gym-dashboard/division-intelligence" },
-  { label: "Competition Simulator", href: "/gym-dashboard/competition-simulator" },
+  { label: "Competition Intelligence", href: "/gym-dashboard/competition-intelligence" },
 ];
 
 export default function GymDashboardSidebar({
