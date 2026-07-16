@@ -1,10 +1,6 @@
 import OpenAI from "openai";
 import { NextResponse } from "next/server";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-
 type ReportFacts = {
   teamName: string;
   division: string | null;
@@ -41,22 +37,22 @@ type ReportFacts = {
     hitZero: number;
     events: number;
   } | null;
-  eventContextComparisons: Array<{
-  teamName: string;
-  averageRank: number;
-  averageGap: number;
-  teamEvents: number;
-  teamEventSizeStars: number;
-  teamEventSizeLabel: string;
-  myTeamEvents: number;
-  myTeamEventSizeStars: number;
-  myTeamEventSizeLabel: string;
-  interpretation:
-    | "opponent_profile_less_tested"
-    | "opponent_profile_more_tested";
-}>;
-};
 
+  eventContextComparisons: Array<{
+    teamName: string;
+    averageRank: number;
+    averageGap: number;
+    teamEvents: number;
+    teamEventSizeStars: number;
+    teamEventSizeLabel: string;
+    myTeamEvents: number;
+    myTeamEventSizeStars: number;
+    myTeamEventSizeLabel: string;
+    interpretation:
+      | "opponent_profile_less_tested"
+      | "opponent_profile_more_tested";
+  }>;
+};
 
 type GeneratedReport = {
   fieldStoryHeadline: string;
@@ -67,12 +63,18 @@ type GeneratedReport = {
 
 export async function POST(request: Request) {
   try {
-    if (!process.env.OPENAI_API_KEY) {
+    const apiKey = process.env.OPENAI_API_KEY;
+
+    if (!apiKey) {
       return NextResponse.json(
         { error: "OPENAI_API_KEY is not configured." },
-        { status: 500 }
+        { status: 503 }
       );
     }
+
+    const openai = new OpenAI({
+      apiKey,
+    });
 
     const facts = (await request.json()) as ReportFacts;
 
