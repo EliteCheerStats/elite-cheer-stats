@@ -1,44 +1,44 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+import { supabase } from "@/lib/supabaseClient";
 
 export default function GymDashboardNavLink() {
   const [hasAccess, setHasAccess] = useState(false);
 
   useEffect(() => {
     async function checkAccess() {
-      const { data: sessionData } = await supabase.auth.getSession();
-      const userId = sessionData.session?.user?.id;
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      const userId = session?.user?.id;
 
       if (!userId) {
         setHasAccess(false);
         return;
       }
 
-      const { data: membership } = await supabase
-        .from("organization_users")
+      const { data: membership, error } = await supabase
+        .from("v_user_organizations")
         .select(`
           organization_id,
-          organizations (
-            id,
-            name,
-            subscription_status
-          )
+          organization_name,
+          subscription_status,
+          role
         `)
         .eq("user_id", userId)
+        .eq("subscription_status", "active")
+        .limit(1)
         .maybeSingle();
 
-      const organization = Array.isArray(membership?.organizations)
-        ? membership.organizations[0]
-        : membership?.organizations;
+      if (error) {
+        console.error("Gym Dashboard access check failed:", error);
+        setHasAccess(false);
+        return;
+      }
 
-      setHasAccess(!!membership && organization?.subscription_status === "active");
+      setHasAccess(!!membership);
     }
 
     checkAccess();

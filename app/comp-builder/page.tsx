@@ -1,7 +1,7 @@
 "use client";
 
 import React, { Fragment, useEffect, useMemo, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
+import { supabase } from "@/lib/supabaseClient";
 import {
   ResponsiveContainer,
   CartesianGrid,
@@ -16,13 +16,7 @@ const STORAGE_KEY = "ecs_comp_builder_email_v1";
 const COMP_STORAGE_KEY = "ecs_comp_builder_state_v1";
 const SAVE_TO_SUPABASE = true;
 
-const supabase =
-  SAVE_TO_SUPABASE
-    ? createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-      )
-    : null;
+
 
 const ROLE_OPTIONS = ["Parent", "Coach", "Athlete", "Owner"] as const;
 type Role = (typeof ROLE_OPTIONS)[number];
@@ -237,7 +231,7 @@ function CompBuilderInner() {
     const runSearch = async () => {
       const term = searchTerm.trim();
 
-      if (!supabase || term.length < 2) {
+      if (!SAVE_TO_SUPABASE || term.length < 2) {
         setSearchResults([]);
         setSearchLoading(false);
         return;
@@ -325,7 +319,7 @@ function CompBuilderInner() {
 
   useEffect(() => {
     const loadRosterData = async () => {
-      if (!supabase || roster.length === 0) {
+      if (!SAVE_TO_SUPABASE || roster.length === 0) {
         setTeamRows({});
         setTeamPerformanceRows({});
         return;
@@ -354,22 +348,33 @@ function CompBuilderInner() {
 
       const eventRows = (eventData ?? []) as TeamEventRow[];
 
-      const { data: perfData, error: perfError } = await supabase
-        .from("v_results_normalized")
-        .select(
-          "team_id, event_id, weekend_date, round_phase, deductions, performance_score, event_score"
-        )
-        .in("team_id", teamIds)
-        .in("round_phase", ["Prelims", "Finals"])
-        .order("weekend_date", { ascending: true });
-
-      if (perfError) {
-        console.error("Failed to load performance rows:", perfError);
-      }
-
+      // IMPORTANT: v_results_normalized contains all normalized results, including
+      // championship events. v_team_event_scores is the protected season-only view.
+      // Build the allowed event_id list from v_team_event_scores first, then use it
+      // to keep hit-zero/performance rows season-only as well.
       const eventIds = Array.from(
         new Set(eventRows.map((r) => String(r.event_id ?? "")).filter(Boolean))
       );
+
+      let perfData: TeamPerformanceRow[] = [];
+
+      if (teamIds.length > 0 && eventIds.length > 0) {
+        const { data: perfRes, error: perfError } = await supabase
+          .from("v_results_normalized")
+          .select(
+            "team_id, event_id, weekend_date, round_phase, deductions, performance_score, event_score"
+          )
+          .in("team_id", teamIds)
+          .in("event_id", eventIds)
+          .in("round_phase", ["Prelims", "Finals"])
+          .order("weekend_date", { ascending: true });
+
+        if (perfError) {
+          console.error("Failed to load performance rows:", perfError);
+        } else {
+          perfData = (perfRes ?? []) as TeamPerformanceRow[];
+        }
+      }
 
       let ceilingData: any[] = [];
 
@@ -442,7 +447,7 @@ function CompBuilderInner() {
   let mounted = true;
 
   async function checkPremium() {
-    if (!supabase) {
+    if (!SAVE_TO_SUPABASE) {
       if (!mounted) return;
       setSession(null);
       setIsPremium(false);

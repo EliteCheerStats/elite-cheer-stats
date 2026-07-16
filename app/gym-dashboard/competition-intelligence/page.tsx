@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import GymDashboardSidebar from "@/app/gym-dashboard/components/GymDashboardSidebar";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -63,6 +64,24 @@ function ordinal(n: number) {
       : "th";
 
   return `${n}${suffix}`;
+}
+
+function getDivisionSize(division?: string | null) {
+  const value = division?.toLowerCase() ?? "";
+
+  if (value.includes("x-small") || value.includes("xsmall")) return "xsmall";
+  if (value.includes("small")) return "small";
+  if (value.includes("medium")) return "medium";
+  if (value.includes("large")) return "large";
+
+  return null;
+}
+
+function getDivisionCore(division?: string | null) {
+  return (division ?? "")
+    .replace(/\s*-\s*(x-small|xsmall|small|medium|large)\s*$/i, "")
+    .trim()
+    .toLowerCase();
 }
 
 function getFieldOutlook({
@@ -165,6 +184,7 @@ function TeamCompareCard({
             {team.name} {isMine && <span className="text-sm text-blue-600">(You)</span>}
           </div>
           <div className="text-xs text-slate-500">{team.location}</div>
+<div className="text-xs font-semibold text-slate-500">{team.division ?? "Division TBD"}</div>
         </div>
 
         <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
@@ -246,6 +266,12 @@ function StrengthLandscape({
 
   const ticks = Array.from({ length: max - min + 1 }, (_, i) => min + i);
 
+    const chartWidth = 1460;
+const chartLeft = 70;
+const chartRight = 40;
+const usableWidth = chartWidth - chartLeft - chartRight;
+const spacing = teams.length > 1 ? usableWidth / (teams.length - 1) : 0;
+
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="mb-4 flex items-center justify-between">
@@ -263,12 +289,12 @@ function StrengthLandscape({
       </div>
 
       <div className="overflow-x-auto">
-        <svg width={980} height={420} className="min-w-[980px]">
+        <svg width={chartWidth} height={420} className="w-full">
           {ticks.map((tick) => (
             <g key={tick}>
               <line
                 x1={40}
-                x2={940}
+                x2={chartWidth - chartRight}
                 y1={y(tick) + 30}
                 y2={y(tick) + 30}
                 stroke="#e2e8f0"
@@ -281,19 +307,19 @@ function StrengthLandscape({
 
           <line
             x1={40}
-            x2={940}
+            x2={chartWidth - chartRight}
             y1={y(myTeam.average) + 30}
             y2={y(myTeam.average) + 30}
             stroke="#2563eb"
             strokeDasharray="5 5"
           />
 
-          <text x={785} y={y(myTeam.average) + 22} fontSize="12" fill="#2563eb">
+          <text x={chartWidth - 180} y={y(myTeam.average) + 22} fontSize="12" fill="#2563eb">
             Your Avg {myTeam.average.toFixed(2)}
           </text>
 
           {teams.map((team, index) => {
-            const x = 80 + index * 145;
+            const x = chartLeft + index * spacing;
             const avgY = y(team.average) + 30;
             const ceilingY = y(team.ceiling) + 30;
             const isFocused = team.id === focusedId;
@@ -368,7 +394,7 @@ function StrengthLandscape({
                   fontWeight={isMine || isFocused ? "700" : "500"}
                   fill={accent}
                 >
-                  {team.name.split(" ").slice(0, 2).join(" ")}
+                  {team.name.split(" ").slice(-1).join(" ")}
                 </text>
               </g>
             );
@@ -401,19 +427,24 @@ type CompetitionProfileRow = {
   trend: Team["trend"] | null;
 };
 export default function CompetitionIntelligencePage() {
+  const router = useRouter();
   const [teams, setTeams] = useState<Team[]>([]);
   const [myTeams, setMyTeams] = useState<MyTeamOption[]>([]);
   const [myTeamId, setMyTeamId] = useState(MY_TEAM_ID);
   const [orgName, setOrgName] = useState("Gym Dashboard");
+  const [organizationId, setOrganizationId] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([myTeamId]);
   const [searchTerm, setSearchTerm] = useState("");
+  const [sameDivisionOnly, setSameDivisionOnly] = useState(true);
   const [focusedId, setFocusedId] = useState<string>(myTeamId);
   const [sortBy, setSortBy] = useState<"average" | "ceiling" | "best" | "hitZero" | "percentile">(
     "average"
   );
   const [showSaveModal, setShowSaveModal] = useState(false);
+  const [showScoutingReport, setShowScoutingReport] = useState(false);
   const [reportName, setReportName] = useState("");
   const [savedMessage, setSavedMessage] = useState("");
 
@@ -424,26 +455,33 @@ useEffect(() => {
     setLoading(true);
     setError(null);
 
-    const { data: sessionData } = await supabase.auth.getSession();
-    const userId = sessionData.session?.user?.id;
+    const {
+      data: { session },
+      error: sessionError,
+    } = await supabase.auth.getSession();
 
-    if (!userId) {
+    const userId = session?.user?.id;
+
+    if (sessionError || !userId) {
       setError("Please log in to view Competition Intelligence.");
       setLoading(false);
       return;
     }
 
+    setCurrentUserId(userId);
+
+    // Resolve the user's active Gym Dashboard organization.
     const { data: membership, error: membershipError } = await supabase
-      .from("organization_users")
+      .from("v_user_organizations")
       .select(`
         organization_id,
-        organizations (
-          id,
-          name,
-          subscription_status
-        )
+        organization_name,
+        subscription_status,
+        role
       `)
       .eq("user_id", userId)
+      .eq("subscription_status", "active")
+      .limit(1)
       .maybeSingle();
 
     if (membershipError) {
@@ -451,107 +489,146 @@ useEffect(() => {
       setLoading(false);
       return;
     }
-const orgRelation = membership?.["organizations"];
 
-const organization = (
-  Array.isArray(orgRelation) ? orgRelation[0] : orgRelation
-) as {
-  id: string;
-  name: string;
-  subscription_status: string;
-} | null;
-
-if (!organization || organization.subscription_status !== "active") {
-  setError("Gym Dashboard access is not active for this account.");
-  setLoading(false);
-  return;
-}
-
-setOrgName(organization.name);
-
-if (!membership?.organization_id) {
-  setError("No gym organization found for this account.");
-  setLoading(false);
-  return;
-}
-
-const { data: orgPrograms, error: orgProgramsError } = await supabase
-  .from("organization_programs")
-  .select("program_id")
-  .eq("organization_id", membership.organization_id);
-
-if (orgProgramsError) {
-  setError(orgProgramsError.message);
-  setLoading(false);
-  return;
-}
-
-const programIds = (orgPrograms ?? []).map((row) => row.program_id);
-
-if (programIds.length === 0) {
-  setError("No programs are linked to this gym.");
-  setLoading(false);
-  return;
-}
-
-
-const { data, error } = await supabase
-  .from("v_competition_intelligence_team_profiles")
-  .select(
-    "id, program_id, program, team, name, division, average, ceiling, best, best_event, hit_zero, events, avg_event_size_stars, avg_event_size_label, national_percentile, trend"
-  )
-  .not("division", "ilike", "%U16%")
-  .not("division", "ilike", "%U18%")
-  .not("division", "ilike", "%International%")
-  .order("program", { ascending: true })
-  .order("team", { ascending: true });
- 
-
-    if (error) {
-      setError(error.message);
+    if (!membership?.organization_id) {
+      setError("No active gym organization found for this account.");
       setLoading(false);
       return;
     }
 
-    const liveTeams: Team[] = (data ?? []).map((row: CompetitionProfileRow) => ({
-  id: row.id,
-  programId: row.program_id,
-  name: row.name ?? row.team ?? "Unnamed Team",
-  location: row.program ?? "",
-  division: row.division,
-  average: Number(row.average ?? 0),
-  ceiling: Number(row.ceiling ?? 0),
-  best: Number(row.best ?? 0),
-  bestEvent: row.best_event ?? "—",
-  hitZero: Number(row.hit_zero ?? 0),
-  events: Number(row.events ?? 0),
-  avgEventSizeStars: Number(row.avg_event_size_stars ?? 0),
-  avgEventSizeLabel: row.avg_event_size_label ?? "—",
-  nationalPercentile: Number(row.national_percentile ?? 0),
-  trend: (row.trend ?? "Stable") as Team["trend"],
-}));
+    const activeOrganizationId = membership.organization_id;
 
-setTeams(liveTeams);
+    setOrganizationId(activeOrganizationId);
+    setOrgName(membership.organization_name ?? "Gym Dashboard");
 
-const myProgramIdSet = new Set(programIds);
+    // Load the exact team IDs this organization owns.
+    // Program-scoped gyms are expanded to their teams inside this view.
+    // Team-scoped gyms such as Top Gun Miami use organization_teams.
+    const { data: accessRows, error: accessError } = await supabase
+      .from("v_organization_team_access")
+      .select("team_id")
+      .eq("organization_id", activeOrganizationId);
 
-const options: MyTeamOption[] = liveTeams
-  .filter((team) => myProgramIdSet.has(team.programId))
-  .map((team) => ({
-    team_id: team.id,
-    team: team.name,
-    division: team.division ?? null,
-    organization_name: organization.name,
-  }));
+    if (accessError) {
+      setError(accessError.message);
+      setLoading(false);
+      return;
+    }
 
-setMyTeams(options);
+    const authorizedTeamIds = Array.from(
+      new Set(
+        (accessRows ?? [])
+          .map((row) => row.team_id)
+          .filter((teamId): teamId is string => Boolean(teamId)),
+      ),
+    );
 
-if (liveTeams[0]) {
-  setMyTeamId(liveTeams[0].id);
-  setSelectedIds([liveTeams[0].id]);
-  setFocusedId(liveTeams[0].id);
-}
+    if (authorizedTeamIds.length === 0) {
+      setError("No teams are linked to this gym.");
+      setLoading(false);
+      return;
+    }
 
+    // Load the full eligible population for opponent search.
+    const { data: profileRows, error: profilesError } = await supabase
+      .from("v_competition_intelligence_team_profiles")
+      .select(
+        "id, program_id, program, team, name, division, average, ceiling, best, best_event, hit_zero, events, avg_event_size_stars, avg_event_size_label, national_percentile, trend",
+      )
+      .not("division", "ilike", "%U16%")
+      .not("division", "ilike", "%U18%")
+      .not("division", "ilike", "%International%")
+      .order("program", { ascending: true })
+      .order("team", { ascending: true });
+
+    if (profilesError) {
+      setError(profilesError.message);
+      setLoading(false);
+      return;
+    }
+
+    const liveTeams: Team[] = (profileRows ?? []).map(
+      (row: CompetitionProfileRow) => ({
+        id: row.id,
+        programId: row.program_id,
+        name: row.name ?? row.team ?? "Unnamed Team",
+        location: row.program ?? "",
+        division: row.division,
+        average: Number(row.average ?? 0),
+        ceiling: Number(row.ceiling ?? 0),
+        best: Number(row.best ?? 0),
+        bestEvent: row.best_event ?? "—",
+        hitZero: Number(row.hit_zero ?? 0),
+        events: Number(row.events ?? 0),
+        avgEventSizeStars: Number(row.avg_event_size_stars ?? 0),
+        avgEventSizeLabel: row.avg_event_size_label ?? "—",
+        nationalPercentile: Number(row.national_percentile ?? 0),
+        trend: (row.trend ?? "Stable") as Team["trend"],
+      }),
+    );
+
+    setTeams(liveTeams);
+
+    const authorizedTeamIdSet = new Set(authorizedTeamIds);
+
+    // My Teams are now determined by exact team authorization,
+    // not by the source program name.
+    const options: MyTeamOption[] = liveTeams
+      .filter((team) => authorizedTeamIdSet.has(team.id))
+      .map((team) => ({
+        team_id: team.id,
+        team: team.name,
+        division: team.division ?? null,
+        organization_name:
+          membership.organization_name ?? "Gym Dashboard",
+      }))
+      .sort((a, b) => a.team.localeCompare(b.team));
+
+    setMyTeams(options);
+
+    const firstMyTeam = options[0];
+
+    if (!firstMyTeam) {
+      setError(
+        "No competition intelligence profiles were found for this gym's authorized teams.",
+      );
+      setLoading(false);
+      return;
+    }
+
+    const firstMyTeamId = firstMyTeam.team_id;
+
+    setMyTeamId(firstMyTeamId);
+    setFocusedId(firstMyTeamId);
+
+    const { data: savedField, error: savedFieldError } = await supabase
+      .from("competition_intelligence_fields")
+      .select("selected_team_ids")
+      .eq("organization_id", activeOrganizationId)
+      .eq("my_team_id", firstMyTeamId)
+      .maybeSingle();
+
+    if (savedFieldError) {
+      setError(savedFieldError.message);
+      setSelectedIds([firstMyTeamId]);
+      setLoading(false);
+      return;
+    }
+
+    const savedIds = savedField?.selected_team_ids ?? [];
+
+    const validSavedIds = savedIds.filter((id: string) =>
+      liveTeams.some((team) => team.id === id),
+    );
+
+    const initialSelectedIds = [
+      firstMyTeamId,
+      ...validSavedIds.filter(
+        (id: string) => id !== firstMyTeamId,
+      ),
+    ].slice(0, 12);
+
+    setSelectedIds(initialSelectedIds);
     setLoading(false);
   }
 
@@ -559,11 +636,12 @@ if (liveTeams[0]) {
 }, []);
 
   const selectedTeams = teams.filter((t) => selectedIds.includes(t.id));
+  const selectedOpponents = selectedTeams.filter((team) => team.id !== myTeamId);
   const myTeam = selectedTeams.find((t) => t.id === myTeamId) ?? selectedTeams[0] ?? teams[0];
   const focusedTeam = selectedTeams.find((t) => t.id === focusedId) ?? selectedTeams[1] ?? myTeam;
     const sortedTeams = useMemo(() => {
     return [...selectedTeams].sort((a, b) => {
-      if (sortBy === "percentile") return a.nationalPercentile - b.nationalPercentile;
+      if (sortBy === "percentile") return b.nationalPercentile - a.nationalPercentile;
       return Number(b[sortBy]) - Number(a[sortBy]);
     });
   }, [selectedTeams, sortBy]);
@@ -617,51 +695,151 @@ if (!myTeam) {
     fieldSize: selectedTeams.length,
   });
 
-  function saveReport() {
-    const name = reportName.trim() || `Scouting Report - ${new Date().toLocaleDateString()}`;
+  const fieldLeader = sortedTeams[0];
+  const averageGap = fieldLeader ? myTeam.average - fieldLeader.average : 0;
 
-    const savedReport = {
-      id: crypto.randomUUID(),
-      name,
-      selectedIds,
-      focusedId,
-      sortBy,
-      createdAt: new Date().toISOString(),
-    };
+  const teamsWithHigherCeiling = selectedTeams.filter(
+    (team) => team.id !== myTeam.id && team.ceiling > myTeam.ceiling
+  );
 
-    const existing = JSON.parse(localStorage.getItem("competitionReports") || "[]");
-    localStorage.setItem("competitionReports", JSON.stringify([savedReport, ...existing]));
+  const biggestThreat = [...selectedTeams]
+    .filter((team) => team.id !== myTeam.id)
+    .sort(
+      (a, b) =>
+        b.average +
+        b.ceiling +
+        b.hitZero / 100 -
+        (a.average + a.ceiling + a.hitZero / 100)
+    )[0];
 
-    setSavedMessage(`Saved "${name}"`);
-    setShowSaveModal(false);
-    setReportName("");
+  const sleeperTeam = [...selectedTeams]
+    .filter(
+      (team) =>
+        team.id !== myTeam.id &&
+        team.average < myTeam.average &&
+        team.ceiling > myTeam.average
+    )
+    .sort((a, b) => b.ceiling - a.ceiling)[0];
 
-    setTimeout(() => setSavedMessage(""), 3000);
+  const consistencyRank = rankOf("hitZero");
+
+  async function saveReport() {
+  if (!organizationId || !currentUserId) {
+    setError("Unable to save this field. Organization or user information is missing.");
+    return;
   }
+
+  const { error: saveError } = await supabase
+    .from("competition_intelligence_fields")
+    .upsert(
+      {
+        organization_id: organizationId,
+        my_team_id: myTeamId,
+        selected_team_ids: selectedIds,
+        created_by: currentUserId,
+        updated_at: new Date().toISOString(),
+      },
+      {
+        onConflict: "organization_id,my_team_id",
+      }
+    );
+
+  if (saveError) {
+    setError(saveError.message);
+    return;
+  }
+
+  setSavedMessage(`Field saved for ${myTeam.name}`);
+  setShowSaveModal(false);
+  setReportName("");
+
+  setTimeout(() => setSavedMessage(""), 3000);
+}
 const availableTeams = teams.filter((team) => !selectedIds.includes(team.id));
 const myTeamOptions = myTeams;
-const searchResults = availableTeams.filter((team) => {
+const rawSearchResults = availableTeams.filter((team) => {
   const query = searchTerm.toLowerCase().trim();
 
   if (!query) return false;
 
-  return (
+  const matchesSearch =
     team.name.toLowerCase().includes(query) ||
-    team.location.toLowerCase().includes(query)
+    team.location.toLowerCase().includes(query);
+
+  if (!matchesSearch) return false;
+
+  if (!sameDivisionOnly) return true;
+
+  const myDivisionCore = getDivisionCore(myTeam.division);
+  const myDivisionSize = getDivisionSize(myTeam.division);
+  const teamDivisionCore = getDivisionCore(team.division);
+  const teamDivisionSize = getDivisionSize(team.division);
+
+  return (
+    teamDivisionCore === myDivisionCore &&
+    (teamDivisionSize === myDivisionSize || teamDivisionSize === null)
   );
 });
-function changeMyTeam(teamId: string) {
+
+const searchResults = rawSearchResults.slice(0, 12);
+const hasSearchQuery = searchTerm.trim().length > 0;
+const hasHiddenSearchResults = rawSearchResults.length > searchResults.length;
+async function changeMyTeam(teamId: string) {
   setMyTeamId(teamId);
-
-  setSelectedIds((current) => {
-    const withoutOldMyTeam = current.filter((id) => id !== myTeamId);
-    return [teamId, ...withoutOldMyTeam.filter((id) => id !== teamId)];
-  });
-
   setFocusedId(teamId);
+  setSearchTerm("");
+
+  console.log("Changing My Team to:", teamId);
+  console.log("Current organizationId:", organizationId);
+
+  if (!organizationId) {
+    console.log("No organizationId available; resetting field.");
+    setSelectedIds([teamId]);
+    return;
+  }
+
+  const { data: savedField, error: savedFieldError } = await supabase
+    .from("competition_intelligence_fields")
+    .select("selected_team_ids")
+    .eq("organization_id", organizationId)
+    .eq("my_team_id", teamId)
+    .maybeSingle();
+
+  console.log("Saved field returned:", savedField);
+  console.log("Saved field error:", savedFieldError);
+
+  if (savedFieldError) {
+    setError(savedFieldError.message);
+    setSelectedIds([teamId]);
+    return;
+  }
+
+  const savedIds = savedField?.selected_team_ids ?? [];
+
+  console.log("Saved IDs:", savedIds);
+
+  const validSavedIds = savedIds.filter((id: string) =>
+    teams.some((team) => team.id === id)
+  );
+
+  console.log("Valid saved IDs:", validSavedIds);
+
+  const nextSelectedIds = [
+    teamId,
+    ...validSavedIds.filter((id: string) => id !== teamId),
+  ].slice(0, 12);
+
+  console.log("Next selected IDs:", nextSelectedIds);
+
+  setSelectedIds(nextSelectedIds);
 }
 function addTeam(teamId: string) {
-  setSelectedIds((current) => [...current, teamId]);
+  setSelectedIds((current) => {
+    if (current.includes(teamId)) return current;
+    if (current.length >= 12) return current;
+    return [...current, teamId];
+  });
+
   setFocusedId(teamId);
   setSearchTerm("");
 }
@@ -703,12 +881,23 @@ if (loading) {
           </div>
 
           <div className="flex gap-3">
-  <button
-    onClick={() => setShowSaveModal(true)}
-    className="rounded-xl border border-slate-200 bg-white px-4 py-2 font-semibold shadow-sm hover:bg-slate-50"
-  >
-    Save Report
-  </button>
+<button
+  onClick={() =>
+    router.push(
+      `/gym-dashboard/competition-intelligence/report?myTeamId=${myTeamId}&teamIds=${selectedIds.join(",")}`
+    )
+  }
+  className="rounded-xl bg-purple-600 px-4 py-2 font-semibold text-white shadow-sm hover:bg-purple-700"
+>
+  Generate Report
+</button>
+
+<button
+  onClick={() => setShowSaveModal(true)}
+  className="rounded-xl border border-slate-200 bg-white px-4 py-2 font-semibold shadow-sm hover:bg-slate-50"
+>
+  Save Field
+</button>
 
   <button
     disabled
@@ -740,7 +929,7 @@ if (loading) {
       Reset Field
     </button>
   </div>
-<div className="mt-4 grid gap-4 lg:grid-cols-[320px_1fr]">
+<div className="mt-4 grid gap-4 lg:grid-cols-[420px_1fr]">
   <div>
     <label className="mb-2 block text-sm font-semibold text-slate-500">
       My Team
@@ -771,9 +960,18 @@ if (loading) {
       className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-purple-400"
       placeholder="Search teams by name, gym, or location..."
     />
-
-    {searchResults.length > 0 && (
-      <div className="absolute z-20 mt-2 w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
+<label className="mt-2 flex items-center gap-2 text-xs font-semibold text-slate-500">
+  <input
+    type="checkbox"
+    checked={sameDivisionOnly}
+    onChange={(e) => setSameDivisionOnly(e.target.checked)}
+  />
+  Same division only
+</label>
+    {hasSearchQuery && (
+  <div className="absolute z-20 mt-2 w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
+    {searchResults.length > 0 ? (
+      <>
         {searchResults.map((team) => (
           <button
             key={team.id}
@@ -782,7 +980,9 @@ if (loading) {
           >
             <div>
               <div className="font-semibold text-slate-950">{team.name}</div>
-              <div className="text-sm text-slate-500">{team.location}</div>
+              <div className="text-sm text-slate-500">
+                {team.location} · {team.division ?? "Division TBD"}
+              </div>
             </div>
 
             <span className="rounded-full border border-slate-200 px-3 py-1 text-sm font-semibold text-purple-700">
@@ -790,50 +990,144 @@ if (loading) {
             </span>
           </button>
         ))}
+
+        {hasHiddenSearchResults && (
+          <div className="border-t border-slate-100 px-4 py-3 text-xs font-semibold text-slate-500">
+            Showing first 12 matches. Keep typing to narrow results.
+          </div>
+        )}
+      </>
+    ) : (
+      <div className="px-4 py-4 text-sm text-slate-500">
+        {sameDivisionOnly
+          ? "No same-division matches found. Try unchecking Same division only."
+          : "No matching teams found."}
       </div>
     )}
+  </div>
+)}
   </div>}
   </div>
 </div>
 
 
   <div className="mt-4">
-    <div className="mb-2 text-sm font-semibold text-slate-500">
-      Selected Teams ({selectedTeams.length})
-    </div>
+  <div className="mb-2 text-sm font-semibold text-slate-500">
+    Your Team
+  </div>
 
-    <div className="flex flex-wrap gap-2">
-      {selectedTeams.map((team) => (
+  <div className="flex flex-wrap gap-2">
+    {myTeam && (
+      <button
+        onClick={() => setFocusedId(myTeam.id)}
+        className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700"
+      >
+        <span>👑</span>
+        <span>{myTeam.name}</span>
+      </button>
+    )}
+  </div>
+
+  <div className="mt-4 mb-2 text-sm font-semibold text-slate-500">
+    Opponents ({selectedOpponents.length}/11)
+  </div>
+{selectedOpponents.length >= 11 && (
+  <div className="mt-3 text-xs font-semibold text-amber-600">
+    Maximum field size reached. Remove an opponent to add another.
+  </div>
+)}
+  <div className="flex flex-wrap gap-2">
+    {selectedOpponents.length > 0 ? (
+      selectedOpponents.map((team) => (
         <button
           key={team.id}
           onClick={() => setFocusedId(team.id)}
           className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold ${
             focusedId === team.id
               ? "border-purple-400 bg-purple-50 text-purple-700"
-              : team.id === myTeamId
-              ? "border-blue-200 bg-blue-50 text-blue-700"
               : "border-slate-200 bg-white text-slate-900"
           }`}
         >
-          <span>{team.id === myTeamId ? "👑" : "⋮⋮"}</span>
+          <span>⋮⋮</span>
           <span>{team.name}</span>
 
-          {team.id !== myTeamId && (
-            <span
-              onClick={(e) => {
-                e.stopPropagation();
-                removeTeam(team.id);
-              }}
-              className="ml-1 rounded-full px-1 text-slate-400 hover:bg-slate-200 hover:text-slate-700"
-            >
-              ×
-            </span>
-          )}
+          <span
+            onClick={(e) => {
+              e.stopPropagation();
+              removeTeam(team.id);
+            }}
+            className="ml-1 rounded-full px-1 text-slate-400 hover:bg-slate-200 hover:text-slate-700"
+          >
+            ×
+          </span>
         </button>
-      ))}
-    </div>
+      ))
+    ) : (
+      <div className="text-sm text-slate-400">
+        Add opponents to build your field.
+      </div>
+    )}
   </div>
+</div>
 </section>
+
+        {showScoutingReport && (
+          <section className="mb-5 rounded-2xl border border-purple-200 bg-white p-6 shadow-sm">
+            <div className="mb-5 border-b border-slate-100 pb-4">
+              <div className="text-xs font-bold uppercase tracking-wide text-purple-700">
+                Scouting Report
+              </div>
+              <h2 className="mt-1 text-2xl font-bold text-slate-950">
+                {myTeam.name}
+              </h2>
+              <p className="mt-1 text-sm text-slate-500">
+                {myTeam.division ?? "Division TBD"} · {selectedTeams.length} teams in field
+              </p>
+            </div>
+
+            <div className="grid gap-4 lg:grid-cols-3">
+              <div className="rounded-xl bg-emerald-50 p-4">
+                <div className="text-sm font-bold text-emerald-800">Best Path</div>
+                <p className="mt-2 text-sm leading-6 text-emerald-900">
+                  {averageRank <= 3
+                    ? "Stay clean and protect your average. Your current scoring profile puts you near the top of this field."
+                    : "You likely need a season-best performance or mistakes from the leaders to move into podium range."}
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-amber-50 p-4">
+                <div className="text-sm font-bold text-amber-800">Biggest Threat</div>
+                <p className="mt-2 text-sm leading-6 text-amber-900">
+                  {biggestThreat
+                    ? `${biggestThreat.name} is the biggest threat based on average, ceiling, and consistency.`
+                    : "Add opponents to identify the biggest threat."}
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-blue-50 p-4">
+                <div className="text-sm font-bold text-blue-800">Quick Read</div>
+                <ul className="mt-2 space-y-2 text-sm leading-6 text-blue-900">
+                  <li>
+                    • {averageGap >= 0
+                      ? `You lead the field by ${averageGap.toFixed(2)} on average.`
+                      : `You trail the field leader by ${Math.abs(averageGap).toFixed(2)} on average.`}
+                  </li>
+                  <li>• {teamsWithHigherCeiling.length} teams have a higher ceiling.</li>
+                  <li>• Hit Zero ranks {ordinal(consistencyRank)} of {selectedTeams.length}.</li>
+                </ul>
+              </div>
+            </div>
+
+            {sleeperTeam && (
+              <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div className="text-sm font-bold text-slate-800">Sleeper Team to Watch</div>
+                <p className="mt-2 text-sm leading-6 text-slate-600">
+                  {sleeperTeam.name} averages below you but owns a ceiling of {sleeperTeam.ceiling.toFixed(2)}, making them dangerous if they hit their best routine.
+                </p>
+              </div>
+            )}
+          </section>
+        )}
 
         <section className="mb-5 rounded-2xl border border-purple-200 bg-purple-50 p-5">
           <div className="grid gap-5 lg:grid-cols-[1.5fr_1fr]">
@@ -948,14 +1242,54 @@ if (loading) {
         <tr className="border-b text-left text-xs uppercase text-slate-500">
           <th className="py-3">#</th>
           <th>Team</th>
-          <th>Avg</th>
-          <th>Ceiling</th>
-          <th>Best</th>
-          <th>HZR</th>
+          <th
+  className={`${
+    sortBy === "average"
+      ? "bg-purple-100 text-purple-700 font-bold"
+      : ""
+  }`}
+>
+  AVG
+</th>
+          <th
+  className={`${
+    sortBy === "ceiling"
+      ? "bg-purple-100 text-purple-700 font-bold"
+      : ""
+  }`}
+>
+  Ceiling
+</th>
+          <th
+  className={`${
+    sortBy === "best"
+      ? "bg-purple-100 text-purple-700 font-bold"
+      : ""
+  }`}
+>
+  Best
+</th>
+          <th
+  className={`${
+    sortBy === "hitZero"
+      ? "bg-purple-100 text-purple-700 font-bold"
+      : ""
+  }`}
+>
+  HZR
+</th>
           <th>Events</th>
           <th>Avg Size</th>
-          <th>National Percentile</th>
-          <th>Trend</th>
+          <th
+  className={`${
+    sortBy === "percentile"
+      ? "bg-purple-100 text-purple-700 font-bold"
+      : ""
+  }`}
+>
+  National Percentile
+</th>
+          
         </tr>
       </thead>
       <tbody>
@@ -973,34 +1307,80 @@ if (loading) {
           >
             <td className="py-4 font-bold">{index + 1}</td>
             <td className="font-semibold">
-              {team.id === myTeamId ? "👑 " : ""}
-              {team.name}
-              {team.id === myTeamId && <span className="text-blue-600"> (You)</span>}
-            </td>
-            <td>{team.average.toFixed(2)}</td>
-            <td>{team.ceiling.toFixed(2)}</td>
-            <td>
-              <div className="font-semibold">{team.best.toFixed(2)}</div>
-              <div className="text-xs text-slate-500">
-                {stars(team.avgEventSizeStars)}
-                <br />
-                {team.bestEvent}
-              </div>
-            </td>
-            <td>{team.hitZero}%</td>
+  <div>
+    {team.id === myTeamId ? "👑 " : ""}
+    {team.name}
+    {team.id === myTeamId && <span className="text-blue-600"> (You)</span>}
+  </div>
+  <div className="mt-1 text-xs font-medium text-slate-500">
+    {team.division ?? "Division TBD"}
+  </div>
+</td>
+            <td
+  className={
+    sortBy === "average"
+      ? "bg-purple-50 font-semibold"
+      : ""
+  }
+>
+  {team.average.toFixed(2)}
+</td>
+            <td
+  className={
+    sortBy === "ceiling"
+      ? "bg-purple-50 font-semibold"
+      : ""
+  }
+>
+  {team.ceiling.toFixed(2)}
+</td>
+            <td
+  className={
+    sortBy === "best"
+      ? "bg-purple-50"
+      : ""
+  }
+>
+ <div
+  className={
+    sortBy === "best"
+      ? "font-semibold"
+      : ""
+  }
+>
+  {team.best.toFixed(2)}
+</div>
+
+  <div className="text-xs text-slate-500">
+    {stars(team.avgEventSizeStars)}
+    <br />
+    {team.bestEvent}
+  </div>
+</td>
+            <td
+  className={
+    sortBy === "hitZero"
+      ? "bg-purple-50 font-semibold"
+      : ""
+  }
+>
+  {Math.round(team.hitZero)}%
+</td>
             <td>{team.events}</td>
             <td>
               {stars(team.avgEventSizeStars)}
               <div className="text-xs text-slate-500">{team.avgEventSizeLabel}</div>
             </td>
-            <td className="font-semibold">Top {team.nationalPercentile}%</td>
             <td
-              className={`font-semibold ${
-                team.trend === "Falling" ? "text-red-500" : "text-emerald-600"
-              }`}
-            >
-              {team.trend === "Falling" ? "↘" : "↗"} {team.trend}
-            </td>
+  className={
+    sortBy === "percentile"
+      ? "bg-purple-50 font-semibold"
+      : ""
+  }
+>
+  Top {Math.round(team.nationalPercentile)}%
+</td>
+            
           </tr>
         ))}
       </tbody>
@@ -1011,7 +1391,7 @@ if (loading) {
         {showSaveModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 px-4">
             <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
-              <h2 className="text-xl font-bold text-slate-950">Save Scouting Report</h2>
+              <h2 className="text-xl font-bold text-slate-950">Save Field</h2>
               <p className="mt-1 text-sm text-slate-500">
                 Save this selected field so you can reopen it later.
               </p>

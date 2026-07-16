@@ -31,5 +31,5 @@ export async function trackUserEvent({
     metadata,
   });
 
-  console.log("trackUserEvent result:", { data, error });
+
 }

@@ -323,94 +323,70 @@ export default function DivisionIntelligencePage() {
       error: userError,
     } = await supabase.auth.getUser();
 
-    if (userError || !user) return;
+    if (userError || !user) {
+      console.error("Unable to load authenticated user:", userError);
+      return;
+    }
 
     const { data: membership, error: membershipError } = await supabase
-      .from("organization_users")
-      .select(
-  `
-  organization_id,
-  organizations (
-    id,
-    name,
-    subscription_status
-  )
-`,
-)
+      .from("v_user_organizations")
+      .select(`
+        organization_id,
+        organization_name,
+        subscription_status,
+        role
+      `)
       .eq("user_id", user.id)
-      .eq("role", "owner")
+      .eq("subscription_status", "active")
+      .limit(1)
       .maybeSingle();
 
-    if (membershipError || !membership?.organizations) return;
+    if (membershipError || !membership) {
+      console.error(
+        "Unable to load active Gym Dashboard membership:",
+        membershipError,
+      );
+      return;
+    }
 
-    const org = Array.isArray(membership.organizations)
-  ? membership.organizations[0]
-  : membership.organizations;
+    if (membership.organization_name) {
+      setOrganizationName(membership.organization_name);
+      setOrganizationInitials(
+        membership.organization_name
+          .split(" ")
+          .filter(Boolean)
+          .map((word: string) => word[0])
+          .join("")
+          .slice(0, 2)
+          .toUpperCase(),
+      );
+    }
 
-const organization = org as {
-  id: string;
-  name: string;
-  subscription_status: string;
-} | null;
+    const { data: teamRows, error: teamsError } = await supabase
+      .from("v_gym_overview_team_table")
+      .select(`
+        team_id,
+        team,
+        division,
+        organization_name
+      `)
+      .eq("organization_id", membership.organization_id)
+      .order("team", { ascending: true });
 
-if (!membership || organization?.subscription_status !== "active") {
-  return;
-}
-
-if (organization.name) {
-  setOrganizationName(organization.name);
-  setOrganizationInitials(
-    organization.name
-      .split(" ")
-      .filter(Boolean)
-      .map((word: string) => word[0])
-      .join("")
-      .slice(0, 2)
-      .toUpperCase(),
-  );
-}
-
-    const { data: orgPrograms, error: orgProgramsError } = await supabase
-      .from("organization_programs")
-      .select(
-        `
-        program_id,
-        programs (
-          id,
-          name
-        )
-      `,
-      )
-      .eq("organization_id", membership.organization_id);
-
-    if (orgProgramsError || !orgPrograms) return;
-
-    const programNames = orgPrograms
-      .map((row: any) => {
-        const program = Array.isArray(row.programs)
-          ? row.programs[0]
-          : row.programs;
-
-        return program?.name;
-      })
-      .filter(Boolean);
-
-    const { data: scoredTeams, error: scoredTeamsError } = await supabase
-      .from("v_team_event_scores_uuid")
-      .select("team_id, team, program, division")
-      .in("program", programNames);
-
-    if (scoredTeamsError || !scoredTeams) return;
+    if (teamsError) {
+      console.error("Unable to load Division Intelligence teams:", teamsError);
+      return;
+    }
 
     const teamMap = new Map<string, OrgTeam>();
 
-    for (const row of scoredTeams as any[]) {
+    for (const row of teamRows ?? []) {
       if (!teamMap.has(row.team_id)) {
         teamMap.set(row.team_id, {
           id: row.team_id,
           name: row.team,
           division: row.division ?? null,
-          programName: row.program ?? null,
+          programName: null,
         });
       }
     }
@@ -421,15 +397,17 @@ if (organization.name) {
 
     setTeams(activeTeams);
 
-    if (activeTeams.length > 0) {
-      setSelectedTeamId((current) =>
-        current && teamMap.has(current) ? current : activeTeams[0].id,
-      );
-    }
+    setSelectedTeamId((current) => {
+      if (current && teamMap.has(current)) {
+        return current;
+      }
+
+      return activeTeams[0]?.id ?? "";
+    });
   }
 
   loadOrgAndTeams();
-}, [supabase]);
+}, []);
 
 const selectedTeam = useMemo(() => {
   return teams.find((t) => t.id === selectedTeamId) ?? null;

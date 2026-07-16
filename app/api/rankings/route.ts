@@ -8,7 +8,7 @@ export async function GET(req: Request) {
   const is_flex = searchParams.get("is_flex");
   const is_d2 = searchParams.get("is_d2");
   const size_effective = searchParams.get("size_effective");
-  const min_events = Number(searchParams.get("min_events") ?? "2");
+  const min_events = 1;
 
   if (!division || is_flex === null || is_d2 === null || !size_effective) {
     return NextResponse.json(
