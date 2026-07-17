@@ -443,7 +443,6 @@ export default function CompetitionIntelligencePage() {
   const [sortBy, setSortBy] = useState<"average" | "ceiling" | "best" | "hitZero" | "percentile">(
     "average"
   );
-  const [showSaveModal, setShowSaveModal] = useState(false);
   const [showScoutingReport, setShowScoutingReport] = useState(false);
   const [reportName, setReportName] = useState("");
   const [savedMessage, setSavedMessage] = useState("");
@@ -750,8 +749,8 @@ if (!myTeam) {
   }
 
   setSavedMessage(`Field saved for ${myTeam.name}`);
-  setShowSaveModal(false);
-  setReportName("");
+  
+
 
   setTimeout(() => setSavedMessage(""), 3000);
 }
@@ -881,11 +880,20 @@ if (loading) {
           </div>
 
           <div className="flex gap-3">
+            <button
+  type="button"
+  onClick={() =>
+    router.push("/gym-dashboard/competition-intelligence/reports")
+  }
+  className="rounded-xl border border-slate-300 bg-white px-4 py-2 font-semibold text-slate-700 shadow-sm transition hover:border-purple-300 hover:bg-purple-50 hover:text-purple-700"
+>
+  Saved Reports
+</button>
 <button
   onClick={() =>
     router.push(
-      `/gym-dashboard/competition-intelligence/report?myTeamId=${myTeamId}&teamIds=${selectedIds.join(",")}`
-    )
+  `/gym-dashboard/competition-intelligence/report?myTeamId=${myTeamId}&teamIds=${selectedIds.join(",")}`
+)
   }
   className="rounded-xl bg-purple-600 px-4 py-2 font-semibold text-white shadow-sm hover:bg-purple-700"
 >
@@ -893,7 +901,7 @@ if (loading) {
 </button>
 
 <button
-  onClick={() => setShowSaveModal(true)}
+  onClick={saveReport}
   className="rounded-xl border border-slate-200 bg-white px-4 py-2 font-semibold shadow-sm hover:bg-slate-50"
 >
   Save Field
@@ -905,6 +913,7 @@ if (loading) {
   >
     Export PDF
   </button>
+  
 </div>
 
           {savedMessage && (
@@ -1388,43 +1397,7 @@ if (loading) {
   </div>
 </section>
 
-        {showSaveModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 px-4">
-            <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
-              <h2 className="text-xl font-bold text-slate-950">Save Field</h2>
-              <p className="mt-1 text-sm text-slate-500">
-                Save this selected field so you can reopen it later.
-              </p>
-
-              <input
-                value={reportName}
-                onChange={(e) => setReportName(e.target.value)}
-                className="mt-5 w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-purple-400"
-                placeholder="Report name..."
-                autoFocus
-              />
-
-              <div className="mt-5 flex justify-end gap-3">
-                <button
-                  onClick={() => {
-                    setShowSaveModal(false);
-                    setReportName("");
-                  }}
-                  className="rounded-xl border border-slate-200 bg-white px-4 py-2 font-semibold hover:bg-slate-50"
-                >
-                  Cancel
-                </button>
-
-                <button
-                  onClick={saveReport}
-                  className="rounded-xl bg-purple-600 px-4 py-2 font-semibold text-white hover:bg-purple-700"
-                >
-                  Save
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        
             </div>
     </main>
   </div>

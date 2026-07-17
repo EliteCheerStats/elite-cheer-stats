@@ -29,7 +29,6 @@ export default function CompetitionIntelligenceReportPage() {
   const searchParams = useSearchParams();
 
   const myTeamId = searchParams.get("myTeamId");
-
   const teamIds = useMemo(() => {
     return (searchParams.get("teamIds") ?? "")
       .split(",")
@@ -46,6 +45,11 @@ export default function CompetitionIntelligenceReportPage() {
   const [finalAssessment, setFinalAssessment] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
+  const [savingReport, setSavingReport] = useState(false);
+  const [savedReportId, setSavedReportId] = useState<string | null>(null);
+  const [saveReportError, setSaveReportError] = useState<string | null>(null);
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [reportName, setReportName] = useState("");
   const generatedReportKeyRef = useRef<string | null>(null);
   useEffect(() => {
     async function loadReportTeams() {
@@ -440,6 +444,7 @@ const materiallyDifferentEventContext =
 )
 .slice(0, 3)
 : [];
+
   useEffect(() => {
   if (loading || error || !myTeam || teams.length === 0) return;
 
@@ -569,6 +574,141 @@ if (!response.ok) {
 
   generateNarrative();
 }, [loading, error, myTeamId, teams]);
+
+async function handleSaveReport() {
+  if (!myTeam || teams.length === 0) {
+    setSaveReportError("The report is not ready to save.");
+    return;
+  }
+
+  if (!reportName.trim()) {
+    setSaveReportError("Enter a report name.");
+    return;
+  }
+
+  try {
+    setSavingReport(true);
+    setSaveReportError(null);
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      throw new Error("You must be signed in to save this report.");
+    }
+
+    const { data: membership, error: membershipError } = await supabase
+      .from("organization_users")
+      .select("organization_id")
+      .eq("user_id", user.id)
+      .limit(1)
+      .maybeSingle();
+
+    if (membershipError) {
+      throw new Error(membershipError.message);
+    }
+
+    if (!membership?.organization_id) {
+      throw new Error(
+        "No Gym Dashboard organization was found for this account."
+      );
+    }
+
+    const generatedAt = new Date().toISOString();
+
+    const reportSnapshot = {
+      version: 1,
+      generatedAt,
+
+      myTeamId: myTeam.id,
+      teamIds: teams.map((team) => team.id),
+      teams,
+
+      fieldSummary: {
+        division: myTeam.division,
+        fieldSize: teams.length,
+        fieldAverage,
+        fieldType,
+        fieldCompression,
+        competitivePosition,
+        topAverageSpread,
+        fieldHitZeroAverage,
+      },
+
+      myTeamPosition: {
+        averageRank,
+        ceilingRank,
+        consistencyRank,
+        teamsAboveAverage: teamsAboveMyAverage.length,
+        teamsAboveCeiling: teamsAboveMyCeiling.length,
+        leaderAverageGap,
+        leaderCeilingGap,
+      },
+
+      leaders: {
+        highestAverageTeam: highestAverageTeam ?? null,
+        highestCeilingTeam: highestCeilingTeam ?? null,
+        mostConsistentTeam: mostConsistentTeam ?? null,
+        highestUpsideTeam: highestUpsideTeam ?? null,
+        biggestThreat: biggestThreat ?? null,
+        mostVolatileTeam: mostVolatileTeam ?? null,
+        mostStableProfile: mostStableProfile ?? null,
+      },
+
+      coachingPriorities: {
+        executionPriority,
+        ceilingPriority,
+        fieldDepthPriority,
+        preparationOutlook,
+      },
+
+      eventContextComparisons,
+    };
+
+    const aiSnapshot = {
+      fieldStoryHeadline,
+      fieldStory,
+      finalAssessmentHeadline: finalHeadline,
+      finalAssessment,
+    };
+
+    const { data: savedReport, error: insertError } = await supabase
+      .from("competition_reports")
+      .insert({
+        organization_id: membership.organization_id,
+        competition_field_id: null,
+        my_team_id: myTeam.id,
+        created_by: user.id,
+        report_name: reportName.trim(),
+        division: myTeam.division,
+        team_ids: teams.map((team) => team.id),
+        report_snapshot: reportSnapshot,
+        ai_snapshot: aiSnapshot,
+      })
+      .select("id")
+      .single();
+
+    if (insertError) {
+      throw new Error(insertError.message);
+    }
+
+    setSavedReportId(savedReport.id);
+    setShowSaveDialog(false);
+  } catch (saveError) {
+    console.error("Competition report save failed:", saveError);
+
+    setSaveReportError(
+      saveError instanceof Error
+        ? saveError.message
+        : "Unable to save this report."
+    );
+  } finally {
+    setSavingReport(false);
+  }
+}
+
   if (loading) {
     return (
       <div className="flex min-h-screen w-full bg-slate-50 text-slate-950">
@@ -643,20 +783,48 @@ if (!response.ok) {
               </p>
             </div>
 
-            <div className="flex gap-3">
-              <button
-                disabled
-                className="cursor-not-allowed rounded-xl border border-slate-200 bg-slate-100 px-4 py-2 font-semibold text-slate-400 shadow-sm"
-              >
-                Save Report
-              </button>
+            <div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setSaveReportError(null);
+                    setShowSaveDialog(true);
+                  }}
+                  disabled={
+                    savingReport ||
+                    aiLoading ||
+                    Boolean(savedReportId)
+                  }
+                  className={`rounded-xl border px-4 py-2 font-semibold shadow-sm transition ${
+                    savedReportId
+                      ? "cursor-default border-emerald-200 bg-emerald-50 text-emerald-700"
+                      : savingReport || aiLoading
+                      ? "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400"
+                      : "border-purple-200 bg-white text-purple-700 hover:border-purple-300 hover:bg-purple-50"
+                  }`}
+                >
+                  {savedReportId
+                    ? "Report Saved"
+                    : savingReport
+                    ? "Saving..."
+                    : aiLoading
+                    ? "Finishing Report..."
+                    : "Save Report"}
+                </button>
 
-              <button
-                disabled
-                className="cursor-not-allowed rounded-xl bg-slate-200 px-4 py-2 font-semibold text-slate-400 shadow-sm"
-              >
-                Export PDF
-              </button>
+                <button
+                  disabled
+                  className="cursor-not-allowed rounded-xl bg-slate-200 px-4 py-2 font-semibold text-slate-400 shadow-sm"
+                >
+                  Export PDF
+                </button>
+              </div>
+
+              {saveReportError && (
+                <div className="mt-2 text-right text-xs font-semibold text-red-600">
+                  {saveReportError}
+                </div>
+              )}
             </div>
           </div>
 
@@ -1356,6 +1524,75 @@ if (!response.ok) {
           </section>
         </div>
       </main>
+
+      {showSaveDialog && (
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-slate-950/40 px-4">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+            <div className="text-xs font-bold uppercase tracking-wide text-purple-700">
+              Save Competition Report
+            </div>
+
+            <h2 className="mt-2 text-xl font-bold text-slate-950">
+              Name this report
+            </h2>
+
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              Use the event name, location, or another label that will make this
+              report easy to find later.
+            </p>
+
+            <label className="mt-5 block text-sm font-semibold text-slate-700">
+              Report Name
+            </label>
+
+            <input
+              type="text"
+              value={reportName}
+              onChange={(event) => {
+                setReportName(event.target.value);
+                setSaveReportError(null);
+              }}
+              autoFocus
+              maxLength={120}
+              className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 text-sm text-slate-950 outline-none transition focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
+              placeholder="Name this report"
+            />
+
+            {saveReportError && (
+              <div className="mt-2 text-sm font-semibold text-red-600">
+                {saveReportError}
+              </div>
+            )}
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowSaveDialog(false);
+                  setSaveReportError(null);
+                }}
+                disabled={savingReport}
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2 font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={handleSaveReport}
+                disabled={savingReport || !reportName.trim()}
+                className={`rounded-xl px-4 py-2 font-semibold text-white shadow-sm transition ${
+                  savingReport || !reportName.trim()
+                    ? "cursor-not-allowed bg-slate-300"
+                    : "bg-purple-600 hover:bg-purple-700"
+                }`}
+              >
+                {savingReport ? "Saving..." : "Save Report"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
