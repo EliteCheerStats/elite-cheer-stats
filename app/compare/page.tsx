@@ -21,7 +21,7 @@ type TeamOption = {
   team_id: string;
   program: string | null;
   team: string | null;
-  division: string | null;
+  division?: string | null;
 };
 
 type EventRow = {
@@ -574,108 +574,96 @@ export default function ComparePage() {
   }, [isPremium, showCeiling]);
 
   useEffect(() => {
-    const q = searchA.trim();
-    if (q.length < 2) {
-      setOptionsA([]);
-      return;
-    }
+  const q = searchA.trim();
 
-    let cancelled = false;
-    const timer = setTimeout(async () => {
-      try {
-        setSearchingA(true);
-        setError(null);
+  if (q.length < 2) {
+    setOptionsA([]);
+    return;
+  }
 
-        const safe = q.replace(/,/g, " ").trim();
+  let cancelled = false;
 
-        const { data, error } = await supabase
-          .from("v_team_event_scores")
-          .select("team_id, program, team, division")
-          .or(`team.ilike.%${safe}%,program.ilike.%${safe}%`)
-          .limit(100);
+  const timer = setTimeout(async () => {
+    try {
+      setSearchingA(true);
+      setError(null);
 
-        if (error) throw error;
-        if (cancelled) return;
+      const safe = q.replace(/,/g, " ").trim().toLowerCase();
 
-        const seen = new Set<string>();
-        const unique = (data ?? []).filter((r: any) => {
-          const key = String(r.team_id);
-          if (seen.has(key)) return false;
-          seen.add(key);
-          return true;
-        });
+      const { data, error } = await supabase
+        .from("mv_compare_team_lookup")
+        .select("team_id, program, team, division")
+        .ilike("search_text", `%${safe}%`)
+        .order("program", { ascending: true })
+        .order("team", { ascending: true })
+        .limit(25);
 
-        unique.sort((a: any, b: any) => {
-          const aName = [a.program, a.team].filter(Boolean).join(" ").toLowerCase();
-          const bName = [b.program, b.team].filter(Boolean).join(" ").toLowerCase();
-          return aName.localeCompare(bName);
-        });
+      if (error) throw error;
+      if (cancelled) return;
 
-        setOptionsA(unique as TeamOption[]);
-      } catch (e: any) {
-        if (!cancelled) setError(e.message ?? "Failed to search Team A");
-      } finally {
-        if (!cancelled) setSearchingA(false);
+      setOptionsA((data ?? []) as TeamOption[]);
+    } catch (e: any) {
+      if (!cancelled) {
+        setError(e.message ?? "Failed to search Team A");
       }
-    }, 250);
+    } finally {
+      if (!cancelled) {
+        setSearchingA(false);
+      }
+    }
+  }, 300);
 
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [searchA]);
+  return () => {
+    cancelled = true;
+    clearTimeout(timer);
+  };
+}, [searchA]);
 
   useEffect(() => {
-    const q = searchB.trim();
-    if (q.length < 2) {
-      setOptionsB([]);
-      return;
-    }
+  const q = searchB.trim();
 
-    let cancelled = false;
-    const timer = setTimeout(async () => {
-      try {
-        setSearchingB(true);
-        setError(null);
+  if (q.length < 2) {
+    setOptionsB([]);
+    return;
+  }
 
-        const safe = q.replace(/,/g, " ").trim();
+  let cancelled = false;
 
-        const { data, error } = await supabase
-          .from("v_team_event_scores")
-          .select("team_id, program, team, division")
-          .or(`team.ilike.%${safe}%,program.ilike.%${safe}%`)
-          .limit(100);
+  const timer = setTimeout(async () => {
+    try {
+      setSearchingB(true);
+      setError(null);
 
-        if (error) throw error;
-        if (cancelled) return;
+      const safe = q.replace(/,/g, " ").trim().toLowerCase();
 
-        const seen = new Set<string>();
-        const unique = (data ?? []).filter((r: any) => {
-          const key = String(r.team_id);
-          if (seen.has(key)) return false;
-          seen.add(key);
-          return true;
-        });
+      const { data, error } = await supabase
+        .from("mv_compare_team_lookup")
+        .select("team_id, program, team, division")
+        .ilike("search_text", `%${safe}%`)
+        .order("program", { ascending: true })
+        .order("team", { ascending: true })
+        .limit(25);
 
-        unique.sort((a: any, b: any) => {
-          const aName = [a.program, a.team].filter(Boolean).join(" ").toLowerCase();
-          const bName = [b.program, b.team].filter(Boolean).join(" ").toLowerCase();
-          return aName.localeCompare(bName);
-        });
+      if (error) throw error;
+      if (cancelled) return;
 
-        setOptionsB(unique as TeamOption[]);
-      } catch (e: any) {
-        if (!cancelled) setError(e.message ?? "Failed to search Team B");
-      } finally {
-        if (!cancelled) setSearchingB(false);
+      setOptionsB((data ?? []) as TeamOption[]);
+    } catch (e: any) {
+      if (!cancelled) {
+        setError(e.message ?? "Failed to search Team B");
       }
-    }, 250);
+    } finally {
+      if (!cancelled) {
+        setSearchingB(false);
+      }
+    }
+  }, 300);
 
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [searchB]);
+  return () => {
+    cancelled = true;
+    clearTimeout(timer);
+  };
+}, [searchB]);
 
   useEffect(() => {
     if (!teamA?.team_id) {
@@ -693,10 +681,12 @@ export default function ComparePage() {
         setError(null);
 
         const { data: scoreData, error: scoreErr } = await supabase
-          .from("v_team_event_scores")
-          .select("team_id, program, team, event_id, event_name, weekend_date, division, event_score")
-          .eq("team_id", teamA.team_id)
-          .order("weekend_date", { ascending: true });
+  .from("v_team_event_scores_uuid")
+  .select(
+    "team_id, program, team, event_id, event_name, weekend_date, division, event_score"
+  )
+  .eq("team_id", teamA.team_id)
+  .order("weekend_date", { ascending: true });
 
         if (scoreErr) throw scoreErr;
         if (cancelled) return;
@@ -743,7 +733,7 @@ export default function ComparePage() {
     return () => {
       cancelled = true;
     };
-  }, [teamA]);
+  }, [teamA?.team_id]);
 
   useEffect(() => {
     if (!teamB?.team_id) {
@@ -761,10 +751,12 @@ export default function ComparePage() {
         setError(null);
 
         const { data: scoreData, error: scoreErr } = await supabase
-          .from("v_team_event_scores")
-          .select("team_id, program, team, event_id, event_name, weekend_date, division, event_score")
-          .eq("team_id", teamB.team_id)
-          .order("weekend_date", { ascending: true });
+  .from("v_team_event_scores_uuid")
+  .select(
+    "team_id, program, team, event_id, event_name, weekend_date, division, event_score"
+  )
+  .eq("team_id", teamB.team_id)
+  .order("weekend_date", { ascending: true });
 
         if (scoreErr) throw scoreErr;
         if (cancelled) return;
@@ -811,7 +803,7 @@ export default function ComparePage() {
     return () => {
       cancelled = true;
     };
-  }, [teamB]);
+  }, [teamB?.team_id]);
 
   const seriesA = useMemo<TeamSeriesPoint[]>(() => {
     return eventsA.map((r) => ({
