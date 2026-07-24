@@ -216,56 +216,56 @@ const [
   nationalPercentileRes,
 ] = await Promise.all([
   supabase
-    .from("mv_gym_overview_team_table")
+    .from("v_gym_overview_team_table_live")
     .select("*")
     .eq("organization_id", organizationId)
     .order("event_score", { ascending: false }),
 
   supabase
-    .from("mv_gym_overview_top_scoring_team")
+    .from("v_gym_overview_top_scoring_team_live")
     .select("*")
     .eq("organization_id", organizationId)
     .maybeSingle(),
 
   supabase
-    .from("mv_gym_overview_hit_zero_summary")
+    .from("v_gym_overview_hit_zero_summary_live")
     .select("*")
     .eq("organization_id", organizationId)
     .maybeSingle(),
 
   supabase
-    .from("mv_gym_overview_biggest_riser")
+    .from("v_gym_overview_biggest_riser_live")
     .select("*")
     .eq("organization_id", organizationId)
     .maybeSingle(),
 
   supabase
-    .from("mv_gym_overview_biggest_faller")
+    .from("v_gym_overview_biggest_faller_live")
     .select("*")
     .eq("organization_id", organizationId)
     .maybeSingle(),
 
   supabase
-    .from("mv_gym_overview_comps")
+    .from("v_gym_overview_comps_live")
     .select("*")
     .eq("organization_id", organizationId)
     .order("weekend_date", { ascending: false }),
 
   supabase
-    .from("mv_gym_overview_hit_zero_streaks")
+    .from("v_gym_overview_hit_zero_streaks_live")
     .select("*")
     .eq("organization_id", organizationId)
     .gt("active_hit_zero_event_streak", 0)
     .order("active_hit_zero_event_streak", { ascending: false }),
 
   supabase
-    .from("mv_gym_overview_hit_zero_slump")
+    .from("v_gym_overview_hit_zero_slump_live")
     .select("*")
     .eq("organization_id", organizationId)
     .order("active_hit_zero_slump", { ascending: false }),
 
   supabase
-    .from("mv_gym_overview_division_leaders")
+    .from("v_gym_overview_division_leaders_live")
     .select("ranking_group, program, team, display_size_effective, avg_event_score")
     .eq("organization_id", organizationId)
     .order("ranking_group"),
