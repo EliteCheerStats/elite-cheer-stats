@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import GymDashboardSidebar from "@/app/gym-dashboard/components/GymDashboardSidebar";
 import { supabase } from "@/lib/supabaseClient";
+import { getActiveGymOrganization } from "@/lib/gym-dashboard/getActiveOrganization";
 
 type TeamProfile = {
   id: string;
@@ -145,28 +146,30 @@ export default function SavedCompetitionReportPage() {
         setLoading(false);
         return;
       }
+let activeOrganization;
 
-      const { data: membership, error: membershipError } = await supabase
-        .from("v_user_organizations")
-        .select("organization_id, organization_name")
-        .eq("user_id", userId)
-        .eq("subscription_status", "active")
-        .limit(1)
-        .maybeSingle();
+try {
+  activeOrganization = await getActiveGymOrganization(userId);
+} catch (membershipError) {
+  console.error(
+    "Organization membership lookup failed:",
+    membershipError
+  );
+  setError("Unable to load Gym Dashboard access.");
+  setLoading(false);
+  return;
+}
 
-      if (membershipError) {
-        setError(membershipError.message);
-        setLoading(false);
-        return;
-      }
+if (!activeOrganization) {
+  setError("No active gym organization was found for this account.");
+  setLoading(false);
+  return;
+}
 
-      if (!membership?.organization_id) {
-        setError("No active gym organization was found for this account.");
-        setLoading(false);
-        return;
-      }
+const organizationId = activeOrganization.organizationId;
+const organizationName = activeOrganization.organizationName;
 
-      setOrgName(membership.organization_name ?? "Gym Dashboard");
+setOrgName(organizationName);
 
       const { data: reportRow, error: reportError } = await supabase
         .from("competition_reports")
@@ -174,7 +177,7 @@ export default function SavedCompetitionReportPage() {
           "id, report_name, division, created_at, report_snapshot, ai_snapshot"
         )
         .eq("id", reportId)
-        .eq("organization_id", membership.organization_id)
+        .eq("organization_id", organizationId)
         .maybeSingle();
 
       if (reportError) {

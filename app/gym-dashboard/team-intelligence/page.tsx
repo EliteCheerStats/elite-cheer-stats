@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import GymDashboardSidebar from "@/app/gym-dashboard/components/GymDashboardSidebar";
-
+import { getActiveGymOrganization } from "@/lib/gym-dashboard/getActiveOrganization";
 
 
 type TeamOption = {
@@ -133,42 +133,36 @@ export default function TeamIntelligencePage() {
       return;
     }
 
-    const { data: membership } = await supabase
-      .from("organization_users")
-      .select(`
-        organization_id,
-        organizations (
-          id,
-          name,
-          subscription_status
-        )
-      `)
-      .eq("user_id", userId)
-      .maybeSingle();
+    let activeOrganization;
 
-    const organization = (
-      Array.isArray(membership?.organizations)
-        ? membership.organizations[0]
-        : membership?.organizations
-    ) as {
-      id: string;
-      name: string;
-      subscription_status: string;
-    } | null;
+try {
+  activeOrganization = await getActiveGymOrganization(userId);
+} catch (membershipError) {
+  console.error(
+    "Organization membership lookup failed:",
+    membershipError
+  );
+  setError("Unable to load Gym Dashboard access.");
+  setLoading(false);
+  return;
+}
 
-    if (!membership || organization?.subscription_status !== "active") {
-      setError("Gym Dashboard access is not active for this account.");
-      setLoading(false);
-      return;
-    }
+if (!activeOrganization) {
+  setError("Gym Dashboard access is not active for this account.");
+  setLoading(false);
+  return;
+}
 
-    setOrgName(organization.name);
+const organizationId = activeOrganization.organizationId;
+const organizationName = activeOrganization.organizationName;
 
-    const { data, error } = await supabase
-      .from("v_gym_overview_team_table")
-      .select("team_id, team, division, organization_name")
-      .eq("organization_id", membership.organization_id)
-      .order("team", { ascending: true });
+setOrgName(organizationName);
+
+const { data, error } = await supabase
+  .from("v_gym_overview_team_table")
+  .select("team_id, team, division, organization_name")
+  .eq("organization_id", organizationId)
+  .order("team", { ascending: true });
 
     if (error) {
       setError(error.message);

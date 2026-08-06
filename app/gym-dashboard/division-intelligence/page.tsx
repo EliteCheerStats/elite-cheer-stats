@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import GymDashboardSidebar from "@/app/gym-dashboard/components/GymDashboardSidebar";
+import { getActiveGymOrganization } from "@/lib/gym-dashboard/getActiveOrganization";
 
 type OrgTeam = {
   id: string;
@@ -13,8 +14,8 @@ type OrgTeam = {
   programName?: string | null;
 };
 
-const fallbackOrganizationName = "All Star Athletics";
-const fallbackOrganizationInitials = "AA";
+const fallbackOrganizationName = "Gym Dashboard";
+const fallbackOrganizationInitials = "GD";
 
 
 
@@ -328,39 +329,39 @@ export default function DivisionIntelligencePage() {
       return;
     }
 
-    const { data: membership, error: membershipError } = await supabase
-      .from("v_user_organizations")
-      .select(`
-        organization_id,
-        organization_name,
-        subscription_status,
-        role
-      `)
-      .eq("user_id", user.id)
-      .eq("subscription_status", "active")
-      .limit(1)
-      .maybeSingle();
+   let activeOrganization;
 
-    if (membershipError || !membership) {
-      console.error(
-        "Unable to load active Gym Dashboard membership:",
-        membershipError,
-      );
-      return;
-    }
+try {
+  activeOrganization = await getActiveGymOrganization(user.id);
+} catch (membershipError) {
+  console.error(
+    "Unable to load active Gym Dashboard membership:",
+    membershipError
+  );
+  return;
+}
 
-    if (membership.organization_name) {
-      setOrganizationName(membership.organization_name);
-      setOrganizationInitials(
-        membership.organization_name
-          .split(" ")
-          .filter(Boolean)
-          .map((word: string) => word[0])
-          .join("")
-          .slice(0, 2)
-          .toUpperCase(),
-      );
-    }
+if (!activeOrganization) {
+  console.error(
+    "No active Gym Dashboard organization was found for this account."
+  );
+  return;
+}
+
+const organizationId = activeOrganization.organizationId;
+const organizationName = activeOrganization.organizationName;
+
+setOrganizationName(organizationName);
+
+setOrganizationInitials(
+  organizationName
+    .split(" ")
+    .filter(Boolean)
+    .map((word: string) => word[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase()
+);
 
     const { data: teamRows, error: teamsError } = await supabase
       .from("v_gym_overview_team_table")
@@ -370,7 +371,7 @@ export default function DivisionIntelligencePage() {
         division,
         organization_name
       `)
-      .eq("organization_id", membership.organization_id)
+      .eq("organization_id", organizationId)
       .order("team", { ascending: true });
 
     if (teamsError) {

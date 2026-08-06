@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import { getActiveGymOrganization } from "@/lib/gym-dashboard/getActiveOrganization";
 
 export default function GymDashboardNavLink() {
   const [hasAccess, setHasAccess] = useState(false);
@@ -10,7 +11,17 @@ export default function GymDashboardNavLink() {
     async function checkAccess() {
       const {
         data: { session },
+        error: sessionError,
       } = await supabase.auth.getSession();
+
+      if (sessionError) {
+        console.error(
+          "Unable to load user session for Gym Dashboard access:",
+          sessionError
+        );
+        setHasAccess(false);
+        return;
+      }
 
       const userId = session?.user?.id;
 
@@ -19,26 +30,18 @@ export default function GymDashboardNavLink() {
         return;
       }
 
-      const { data: membership, error } = await supabase
-        .from("v_user_organizations")
-        .select(`
-          organization_id,
-          organization_name,
-          subscription_status,
-          role
-        `)
-        .eq("user_id", userId)
-        .eq("subscription_status", "active")
-        .limit(1)
-        .maybeSingle();
+      try {
+        const activeOrganization =
+          await getActiveGymOrganization(userId);
 
-      if (error) {
-        console.error("Gym Dashboard access check failed:", error);
+        setHasAccess(Boolean(activeOrganization));
+      } catch (accessError) {
+        console.error(
+          "Unable to resolve Gym Dashboard access:",
+          accessError
+        );
         setHasAccess(false);
-        return;
       }
-
-      setHasAccess(!!membership);
     }
 
     checkAccess();

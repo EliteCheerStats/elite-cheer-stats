@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import GymDashboardSidebar from "@/app/gym-dashboard/components/GymDashboardSidebar";
 import { supabase } from "@/lib/supabaseClient";
+import { getActiveGymOrganization } from "@/lib/gym-dashboard/getActiveOrganization";
 
 const MY_TEAM_ID = "royalty";
 type MyTeamOption = {
@@ -461,53 +462,48 @@ useEffect(() => {
 
     const userId = session?.user?.id;
 
-    if (sessionError || !userId) {
-      setError("Please log in to view Competition Intelligence.");
-      setLoading(false);
-      return;
-    }
+if (sessionError || !userId) {
+  setError("Please log in to view Competition Intelligence.");
+  setLoading(false);
+  return;
+}
 
-    setCurrentUserId(userId);
+setCurrentUserId(userId);
 
-    // Resolve the user's active Gym Dashboard organization.
-    const { data: membership, error: membershipError } = await supabase
-      .from("v_user_organizations")
-      .select(`
-        organization_id,
-        organization_name,
-        subscription_status,
-        role
-      `)
-      .eq("user_id", userId)
-      .eq("subscription_status", "active")
-      .limit(1)
-      .maybeSingle();
+// Resolve the user's active Gym Dashboard organization.
+let activeOrganization;
 
-    if (membershipError) {
-      setError(membershipError.message);
-      setLoading(false);
-      return;
-    }
+try {
+  activeOrganization = await getActiveGymOrganization(userId);
+} catch (membershipError) {
+  console.error(
+    "Organization membership lookup failed:",
+    membershipError
+  );
+  setError("Unable to load Gym Dashboard access.");
+  setLoading(false);
+  return;
+}
 
-    if (!membership?.organization_id) {
-      setError("No active gym organization found for this account.");
-      setLoading(false);
-      return;
-    }
+if (!activeOrganization) {
+  setError("No active gym organization found for this account.");
+  setLoading(false);
+  return;
+}
 
-    const activeOrganizationId = membership.organization_id;
+const activeOrganizationId = activeOrganization.organizationId;
+const activeOrganizationName = activeOrganization.organizationName;
 
-    setOrganizationId(activeOrganizationId);
-    setOrgName(membership.organization_name ?? "Gym Dashboard");
+setOrganizationId(activeOrganizationId);
+setOrgName(activeOrganizationName);
 
-    // Load the exact team IDs this organization owns.
-    // Program-scoped gyms are expanded to their teams inside this view.
-    // Team-scoped gyms such as Top Gun Miami use organization_teams.
-    const { data: accessRows, error: accessError } = await supabase
-      .from("v_organization_team_access")
-      .select("team_id")
-      .eq("organization_id", activeOrganizationId);
-
+// Load the exact team IDs this organization owns.
+// Program-scoped gyms are expanded to their teams inside this view.
+// Team-scoped gyms such as Top Gun Miami use organization_teams.
+const { data: accessRows, error: accessError } = await supabase
+  .from("v_organization_team_access")
+  .select("team_id")
+  .eq("organization_id", activeOrganizationId);
     if (accessError) {
       setError(accessError.message);
       setLoading(false);
@@ -579,7 +575,7 @@ useEffect(() => {
         team: team.name,
         division: team.division ?? null,
         organization_name:
-          membership.organization_name ?? "Gym Dashboard",
+  activeOrganizationName,
       }))
       .sort((a, b) => a.team.localeCompare(b.team));
 
@@ -892,8 +888,8 @@ if (loading) {
 <button
   onClick={() =>
     router.push(
-  `/gym-dashboard/competition-intelligence/report?myTeamId=${myTeamId}&teamIds=${selectedIds.join(",")}`
-)
+      `/gym-dashboard/competition-intelligence/report?organizationId=${organizationId}&myTeamId=${myTeamId}&teamIds=${selectedIds.join(",")}`
+    )
   }
   className="rounded-xl bg-purple-600 px-4 py-2 font-semibold text-white shadow-sm hover:bg-purple-700"
 >

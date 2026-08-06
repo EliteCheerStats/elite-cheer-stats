@@ -5,8 +5,7 @@ import { supabase } from "@/lib/supabaseClient";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import GymDashboardSidebar from "@/app/gym-dashboard/components/GymDashboardSidebar";
-
-
+import { getActiveGymOrganization } from "@/lib/gym-dashboard/getActiveOrganization";
 
 type Performance = {
   round_phase: string;
@@ -174,34 +173,27 @@ export default function GymDashboardPage() {
         return;
       }
 
-      const { data: membership } = await supabase
-  .from("organization_users")
-  .select(`
-    organization_id,
-    organizations (
-      id,
-      name,
-      subscription_status
-    )
-  `)
-  .eq("user_id", userId)
-  .maybeSingle();
+      let activeOrganization;
 
-const organization = Array.isArray(membership?.organizations)
-  ? membership.organizations[0]
-  : membership?.organizations;
-if (!membership || organization?.subscription_status !== "active") {
+try {
+  activeOrganization = await getActiveGymOrganization(userId);
+} catch (membershipError) {
+  console.error(
+    "Organization membership lookup failed:",
+    membershipError
+  );
+  setError("Unable to load Gym Dashboard access.");
+  return;
+}
+
+if (!activeOrganization) {
   setError("Gym Dashboard access is not active for this account.");
   return;
 }
-setOrgName(organization?.name ?? "Gym Dashboard");
 
-const organizationId = membership?.organization_id;
+setOrgName(activeOrganization.organizationName);
 
-if (!organizationId) {
-  setError("Gym Dashboard access is not active for this account.");
-  return;
-}
+const organizationId = activeOrganization.organizationId;
 
 const [
   teamTableRes,

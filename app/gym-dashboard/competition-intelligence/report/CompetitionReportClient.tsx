@@ -28,7 +28,11 @@ export default function CompetitionIntelligenceReportPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const myTeamId = searchParams.get("myTeamId");
+  const organizationId = searchParams.get("organizationId");
+const myTeamId = searchParams.get("myTeamId");
+
+const [organizationName, setOrganizationName] =
+  useState("Gym Dashboard");
   const teamIds = useMemo(() => {
     return (searchParams.get("teamIds") ?? "")
       .split(",")
@@ -56,12 +60,55 @@ export default function CompetitionIntelligenceReportPage() {
       setLoading(true);
       setError(null);
 
-      if (!myTeamId || teamIds.length === 0) {
-        setError("No competition field was provided for this report.");
-        setLoading(false);
-        return;
-      }
+      if (!organizationId || !myTeamId || teamIds.length === 0) {
+  setError(
+    "No organization or competition field was provided for this report."
+  );
+  setLoading(false);
+  return;
+}
+const {
+  data: { user },
+  error: userError,
+} = await supabase.auth.getUser();
 
+if (userError || !user) {
+  setError("Please log in to view this report.");
+  setLoading(false);
+  return;
+}
+
+const { data: membership, error: membershipError } = await supabase
+  .from("organization_users")
+  .select(`
+    organization_id,
+    organizations (
+      id,
+      name,
+      subscription_status
+    )
+  `)
+  .eq("user_id", user.id)
+  .eq("organization_id", organizationId)
+  .maybeSingle();
+
+if (membershipError) {
+  setError(membershipError.message);
+  setLoading(false);
+  return;
+}
+
+const organization = Array.isArray(membership?.organizations)
+  ? membership.organizations[0]
+  : membership?.organizations;
+
+if (!membership || organization?.subscription_status !== "active") {
+  setError("Gym Dashboard access is not active for this organization.");
+  setLoading(false);
+  return;
+}
+
+setOrganizationName(organization.name ?? "Gym Dashboard");
       const { data, error: teamError } = await supabase
         .from("v_competition_intelligence_team_profiles")
         .select(
@@ -89,7 +136,7 @@ export default function CompetitionIntelligenceReportPage() {
     }
 
     loadReportTeams();
-  }, [myTeamId, teamIds]);
+  }, [organizationId, myTeamId, teamIds]);
 
   const myTeam =
     teams.find((team) => team.id === myTeamId) ?? teams[0];
@@ -599,22 +646,11 @@ async function handleSaveReport() {
       throw new Error("You must be signed in to save this report.");
     }
 
-    const { data: membership, error: membershipError } = await supabase
-      .from("organization_users")
-      .select("organization_id")
-      .eq("user_id", user.id)
-      .limit(1)
-      .maybeSingle();
-
-    if (membershipError) {
-      throw new Error(membershipError.message);
-    }
-
-    if (!membership?.organization_id) {
-      throw new Error(
-        "No Gym Dashboard organization was found for this account."
-      );
-    }
+    if (!organizationId) {
+  throw new Error(
+    "No Gym Dashboard organization was provided for this report."
+  );
+}
 
     const generatedAt = new Date().toISOString();
 
@@ -677,7 +713,7 @@ async function handleSaveReport() {
     const { data: savedReport, error: insertError } = await supabase
       .from("competition_reports")
       .insert({
-        organization_id: membership.organization_id,
+        organization_id: organizationId,
         competition_field_id: null,
         my_team_id: myTeam.id,
         created_by: user.id,
@@ -746,9 +782,9 @@ async function handleSaveReport() {
   return (
     <div className="flex min-h-screen w-full bg-slate-50 text-slate-950">
       <GymDashboardSidebar
-        organizationName={myTeam.program}
-        role="Owner"
-      />
+  organizationName={organizationName}
+  role="Owner"
+/>
 
       <main className="ml-64 min-w-0 flex-1 overflow-x-hidden p-6 xl:p-8">
         <div className="mx-auto max-w-[1500px]">

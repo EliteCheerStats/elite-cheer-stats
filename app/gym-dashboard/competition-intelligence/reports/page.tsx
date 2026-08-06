@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import GymDashboardSidebar from "@/app/gym-dashboard/components/GymDashboardSidebar";
 import { supabase } from "@/lib/supabaseClient";
+import { getActiveGymOrganization } from "@/lib/gym-dashboard/getActiveOrganization";
 
 type SavedReport = {
   id: string;
@@ -39,34 +40,36 @@ export default function SavedCompetitionReportsPage() {
         return;
       }
 
-      const { data: membership, error: membershipError } = await supabase
-        .from("v_user_organizations")
-        .select("organization_id, organization_name")
-        .eq("user_id", userId)
-        .eq("subscription_status", "active")
-        .limit(1)
-        .maybeSingle();
+      let activeOrganization;
 
-      if (membershipError) {
-        setError(membershipError.message);
-        setLoading(false);
-        return;
-      }
+try {
+  activeOrganization = await getActiveGymOrganization(userId);
+} catch (membershipError) {
+  console.error(
+    "Organization membership lookup failed:",
+    membershipError
+  );
+  setError("Unable to load Gym Dashboard access.");
+  setLoading(false);
+  return;
+}
 
-      if (!membership?.organization_id) {
-        setError("No active gym organization found for this account.");
-        setLoading(false);
-        return;
-      }
+if (!activeOrganization) {
+  setError("No active gym organization found for this account.");
+  setLoading(false);
+  return;
+}
 
-      setOrgName(membership.organization_name ?? "Gym Dashboard");
+const organizationId = activeOrganization.organizationId;
+const organizationName = activeOrganization.organizationName;
 
+setOrgName(organizationName);
       const { data: reportRows, error: reportsError } = await supabase
         .from("competition_reports")
         .select(
           "id, report_name, division, team_ids, created_at"
         )
-        .eq("organization_id", membership.organization_id)
+        .eq("organization_id", organizationId)
         .order("created_at", { ascending: false });
 
       if (reportsError) {
