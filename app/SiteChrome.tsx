@@ -10,11 +10,14 @@ export default function SiteChrome({
   publicSiteChrome: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const isGymDashboard = pathname?.startsWith("/gym-dashboard");
+
+  const isGymDashboard =
+    pathname?.startsWith("/gym-dashboard") &&
+    pathname !== "/gym-dashboard/trial";
 
   if (isGymDashboard) {
-  return <>{children}</>;
-}
+    return <>{children}</>;
+  }
 
   return <>{publicSiteChrome}</>;
 }

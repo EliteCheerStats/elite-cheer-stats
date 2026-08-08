@@ -10,13 +10,13 @@ export default function HomePage() {
   const [isPremium, setIsPremium] = useState(false);
 
   const [followedTeams, setFollowedTeams] = useState<
-  {
-    team_id: string;
-    team_name: string | null;
-    program_name: string | null;
-    last_score?: number | null;
-  }[]
->([]);
+    {
+      team_id: string;
+      team_name: string | null;
+      program_name: string | null;
+      last_score?: number | null;
+    }[]
+  >([]);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -25,86 +25,92 @@ export default function HomePage() {
   const [authMessage, setAuthMessage] = useState<string | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
 
+  useEffect(() => {
+    let mounted = true;
 
+    async function load() {
+      setLoading(true);
 
-useEffect(() => {
-  let mounted = true;
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
-  async function load() {
-    setLoading(true);
+      if (!mounted) return;
 
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-
-    if (!mounted) return;
-
-    if (!session?.user) {
-      setSessionEmail(null);
-      setIsPremium(false);
-      setFollowedTeams([]);
-      setLoading(false);
-      return;
-    }
-
-    setSessionEmail(session.user.email ?? null);
-
-    const { data: followed } = await supabase
-      .from("v_user_followed_teams")
-      .select("team_id, team_name, program_name, created_at")
-      .eq("user_id", session.user.id)
-      .order("created_at", { ascending: false })
-      .limit(3);
-
-    if (followed && followed.length > 0) {
-      const { data: scores } = await supabase
-        .from("v_team_event_scores")
-        .select("team_id, event_score, weekend_date")
-        .in("team_id", followed.map((t) => t.team_id));
-
-      const latestScores = new Map<string, any>();
-
-      for (const row of scores ?? []) {
-        const existing = latestScores.get(row.team_id);
-
-        if (!existing || row.weekend_date > existing.weekend_date) {
-          latestScores.set(row.team_id, row);
-        }
+      if (!session?.user) {
+        setSessionEmail(null);
+        setIsPremium(false);
+        setFollowedTeams([]);
+        setLoading(false);
+        return;
       }
 
-      setFollowedTeams(
-        followed.map((t) => ({
-          ...t,
-          last_score: latestScores.get(t.team_id)?.event_score ?? null,
-        }))
-      );
-    } else {
-      setFollowedTeams([]);
+      setSessionEmail(session.user.email ?? null);
+
+      const { data: followed } = await supabase
+        .from("v_user_followed_teams")
+        .select("team_id, team_name, program_name, created_at")
+        .eq("user_id", session.user.id)
+        .order("created_at", { ascending: false })
+        .limit(3);
+
+      if (followed && followed.length > 0) {
+        const { data: scores } = await supabase
+          .from("v_team_event_scores")
+          .select("team_id, event_score, weekend_date")
+          .in(
+            "team_id",
+            followed.map((t) => t.team_id)
+          );
+
+        const latestScores = new Map<string, any>();
+
+        for (const row of scores ?? []) {
+          const existing = latestScores.get(row.team_id);
+
+          if (
+            !existing ||
+            row.weekend_date > existing.weekend_date
+          ) {
+            latestScores.set(row.team_id, row);
+          }
+        }
+
+        setFollowedTeams(
+          followed.map((t) => ({
+            ...t,
+            last_score:
+              latestScores.get(t.team_id)?.event_score ?? null,
+          }))
+        );
+      } else {
+        setFollowedTeams([]);
+      }
+
+      const { data } = await supabase
+        .from("profiles")
+        .select("is_premium")
+        .eq("id", session.user.id)
+        .maybeSingle();
+
+      if (!mounted) return;
+
+      setIsPremium(!!data?.is_premium);
+      setLoading(false);
     }
 
-    const { data } = await supabase
-      .from("profiles")
-      .select("is_premium")
-      .eq("id", session.user.id)
-      .maybeSingle();
-
-    if (!mounted) return;
-
-    setIsPremium(!!data?.is_premium);
-    setLoading(false);
-  }
-
-  load();
-
-  const { data: listener } = supabase.auth.onAuthStateChange(() => {
     load();
-  });
 
-  return () => {
-    mounted = false;
-    listener.subscription.unsubscribe();
-  };
-}, []);
+    const { data: listener } =
+      supabase.auth.onAuthStateChange(() => {
+        load();
+      });
+
+    return () => {
+      mounted = false;
+      listener.subscription.unsubscribe();
+    };
+  }, []);
 
   async function handleLogout() {
     await supabase.auth.signOut();
@@ -129,20 +135,27 @@ useEffect(() => {
       }
 
       if (authMode === "signup") {
-        const { data: existingProfile, error: profileError } = await supabase
+        const {
+          data: existingProfile,
+          error: profileError,
+        } = await supabase
           .from("profiles")
           .select("id")
           .eq("email", cleanEmail)
           .maybeSingle();
 
         if (profileError) {
-          setAuthError("Could not verify account status. Please try again.");
+          setAuthError(
+            "Could not verify account status. Please try again."
+          );
           setAuthLoading(false);
           return;
         }
 
         if (existingProfile) {
-          setAuthError("An account with this email already exists. Please log in.");
+          setAuthError(
+            "An account with this email already exists. Please log in."
+          );
           setAuthMode("login");
           setAuthLoading(false);
           return;
@@ -170,10 +183,11 @@ useEffect(() => {
         return;
       }
 
-      const { error } = await supabase.auth.signInWithPassword({
-        email: cleanEmail,
-        password: cleanPassword,
-      });
+      const { error } =
+        await supabase.auth.signInWithPassword({
+          email: cleanEmail,
+          password: cleanPassword,
+        });
 
       if (error) {
         setAuthError("Invalid email or password.");
@@ -183,7 +197,9 @@ useEffect(() => {
 
       window.location.reload();
     } catch {
-      setAuthError("Something went wrong. Please try again.");
+      setAuthError(
+        "Something went wrong. Please try again."
+      );
       setAuthLoading(false);
     }
   }
@@ -201,13 +217,13 @@ useEffect(() => {
           </h1>
 
           <p className="mt-6 max-w-3xl text-lg text-white/85">
-            Rankings, team search, comparisons, and premium cheer analytics built
-            for parents, athletes, and gym decision-makers.
+            Rankings, team search, comparisons, and premium cheer
+            analytics built for parents, athletes, and gym
+            decision-makers.
           </p>
 
           <div className="mt-8 flex flex-wrap gap-4">
-
-<Link
+            <Link
               href="/rankings"
               className="rounded-xl border border-white/15 bg-white/5 px-6 py-3 text-base font-semibold hover:bg-white/10"
             >
@@ -220,7 +236,7 @@ useEffect(() => {
             >
               Search a Team
             </Link>
-            
+
             <Link
               href="/compare"
               className="rounded-xl border border-white/15 bg-white/5 px-6 py-3 text-base font-semibold hover:bg-white/10"
@@ -228,7 +244,6 @@ useEffect(() => {
               Compare Teams
             </Link>
 
-            
             <Link
               href="/comp-builder"
               className="rounded-xl border border-[#00e5d4]/30 bg-[#00e5d4]/10 px-6 py-3 text-base font-semibold text-[#52f7ea] hover:bg-[#00e5d4]/15"
@@ -237,11 +252,11 @@ useEffect(() => {
             </Link>
 
             <Link
-  href="/summit-builder"
-  className="rounded-xl border border-pink-500/60 bg-pink-500/10 px-6 py-4 font-semibold text-pink-300 transition hover:bg-pink-500/20"
->
-  Summit Builder
-</Link>
+              href="/summit-builder"
+              className="rounded-xl border border-pink-500/60 bg-pink-500/10 px-6 py-4 font-semibold text-pink-300 transition hover:bg-pink-500/20"
+            >
+              Summit Builder
+            </Link>
           </div>
 
           {!loading && sessionEmail && (
@@ -249,6 +264,7 @@ useEffect(() => {
               <span className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-sm">
                 {sessionEmail}
               </span>
+
               <span
                 className={`rounded-full px-3 py-1 text-sm font-semibold ${
                   isPremium
@@ -258,6 +274,7 @@ useEffect(() => {
               >
                 {isPremium ? "Premium" : "Free"}
               </span>
+
               <button
                 onClick={handleLogout}
                 className="rounded-md border border-white/15 px-3 py-1.5 text-sm hover:bg-white/5"
@@ -268,72 +285,142 @@ useEffect(() => {
           )}
         </div>
 
-{!loading && sessionEmail && followedTeams.length > 0 && (
-  <div className="mb-8 rounded-2xl border border-[#14b8a6]/25 bg-gradient-to-br from-[#0b1f4f] via-[#08204a] to-[#05163a] p-6 shadow-[0_0_0_1px_rgba(20,184,166,0.06)]">
-    <h2 className="text-2xl font-bold text-white">Your Teams</h2>
-    <p className="mt-1 text-sm text-teal-100/80">
-      Your teams (up to 3). Updated weekly.
-    </p>
+        {!loading &&
+          sessionEmail &&
+          followedTeams.length > 0 && (
+            <div className="mb-8 rounded-2xl border border-[#14b8a6]/25 bg-gradient-to-br from-[#0b1f4f] via-[#08204a] to-[#05163a] p-6 shadow-[0_0_0_1px_rgba(20,184,166,0.06)]">
+              <h2 className="text-2xl font-bold text-white">
+                Your Teams
+              </h2>
 
-    <div className="mt-4 grid gap-4 md:grid-cols-3">
-      {followedTeams.map((team) => (
-        <div
-          key={team.team_id}
-          className="rounded-xl border border-white/10 bg-[#07122f]/80 p-4"
-        >
-          <div className="text-lg font-semibold text-white">
-            {team.team_name}
+              <p className="mt-1 text-sm text-teal-100/80">
+                Your teams (up to 3). Updated weekly.
+              </p>
+
+              <div className="mt-4 grid gap-4 md:grid-cols-3">
+                {followedTeams.map((team) => (
+                  <div
+                    key={team.team_id}
+                    className="rounded-xl border border-white/10 bg-[#07122f]/80 p-4"
+                  >
+                    <div className="text-lg font-semibold text-white">
+                      {team.team_name}
+                    </div>
+
+                    {team.program_name && (
+                      <div className="text-sm text-white/70">
+                        {team.program_name}
+                      </div>
+                    )}
+
+                    {team.last_score != null && (
+                      <div className="mt-2 text-sm font-semibold text-teal-300">
+                        Last score:{" "}
+                        {Number(
+                          team.last_score
+                        ).toFixed(1)}
+                      </div>
+                    )}
+
+                    <Link
+                      href={`/team/${team.team_id}`}
+                      className="mt-3 inline-block rounded-lg border border-white/15 px-3 py-2 text-sm font-semibold hover:bg-white/10"
+                    >
+                      View Team →
+                    </Link>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+        <div className="mb-8 rounded-2xl border border-cyan-300 bg-gradient-to-r from-cyan-100 via-teal-50 to-slate-50 p-8 text-slate-950 shadow-[0_0_28px_rgba(34,211,238,0.20)]">
+          <div className="grid gap-10 lg:grid-cols-2">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-cyan-800">
+                Introducing
+              </p>
+
+              <h2 className="mt-3 text-4xl font-extrabold text-slate-950">
+                ECS Gym Dashboard
+              </h2>
+
+              <p className="mt-5 text-lg font-medium text-cyan-800">
+                Analytics for every team. Insights for every
+                program.
+              </p>
+
+              <p className="mt-5 leading-8 text-slate-700">
+                See how your teams compare nationally, identify
+                strengths and weaknesses, scout upcoming
+                competitions, and make smarter coaching decisions
+                all season long.
+              </p>
+
+              <div className="mt-8">
+                <Link
+                  href="/gym-dashboard-sales"
+                  className="inline-flex rounded-xl bg-[#03123b] px-8 py-4 text-lg font-bold text-white shadow-sm transition hover:bg-[#061a4d]"
+                >
+                  Learn More & Start Your Free 7-Day Trial
+                </Link>
+              </div>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <GymDashboardFeatureCard
+                title="Team Intelligence"
+                desc="Know exactly how every team is progressing."
+              />
+
+              <GymDashboardFeatureCard
+                title="Division Intelligence"
+                desc="Compare your teams against the nation's best."
+              />
+
+              <GymDashboardFeatureCard
+                title="Competition Intelligence"
+                desc="Scout the field before competition day."
+              />
+
+              <GymDashboardFeatureCard
+                title="Season Analytics"
+                desc="Track trends across the entire season."
+              />
+            </div>
           </div>
-
-          {team.program_name && (
-            <div className="text-sm text-white/70">
-              {team.program_name}
-            </div>
-          )}
-
-          {team.last_score != null && (
-            <div className="mt-2 text-sm font-semibold text-teal-300">
-              Last score: {Number(team.last_score).toFixed(1)}
-            </div>
-          )}
-
-          <Link
-            href={`/team/${team.team_id}`}
-            className="mt-3 inline-block rounded-lg border border-white/15 px-3 py-2 text-sm font-semibold hover:bg-white/10"
-          >
-            View Team →
-          </Link>
         </div>
-      ))}
-    </div>
-  </div>
-)}
 
-<div className="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
-  <div className="grid gap-4 md:grid-cols-2">
-    <FeatureCard
-      title="Rankings"
-      desc="Free access to top team movement and leaderboard visibility."
-    />
-    <FeatureCard
-      title="Team Search"
-      desc="Quickly find teams, scores, trends, and event history."
-    />
-    <FeatureCard
-      title="Team Comparison"
-      desc="Compare teams side by side across scoring trends and outcomes."
-    />
-    <FeatureCard
-      title="Premium Analytics"
-      desc="Unlock ceiling score, hit-zero rate, deeper rankings, and more."
-    />
-  </div>
-</div>
+        <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+          <div className="grid gap-4 md:grid-cols-2">
+            <FeatureCard
+              title="Rankings"
+              desc="Free access to top team movement and leaderboard visibility."
+            />
+
+            <FeatureCard
+              title="Team Search"
+              desc="Quickly find teams, scores, trends, and event history."
+            />
+
+            <FeatureCard
+              title="Team Comparison"
+              desc="Compare teams side by side across scoring trends and outcomes."
+            />
+
+            <FeatureCard
+              title="ECS Premium"
+              desc="Unlock ceiling score, hit-zero rate, deeper rankings, and more."
+            />
+          </div>
+        </div>
 
         {!loading && !sessionEmail && (
           <div className="mt-8 rounded-2xl border border-white/10 bg-[#03123b] p-6">
             <h2 className="text-2xl font-bold">
-              {authMode === "signup" ? "Create your free account" : "Log in"}
+              {authMode === "signup"
+                ? "Create your free account"
+                : "Log in"}
             </h2>
 
             <p className="mt-2 text-white/75">
@@ -342,13 +429,21 @@ useEffect(() => {
                 : "Log in to access your account and Premium features."}
             </p>
 
-            <form onSubmit={handleAuthSubmit} className="mt-6 space-y-4">
+            <form
+              onSubmit={handleAuthSubmit}
+              className="mt-6 space-y-4"
+            >
               <div>
-                <label className="mb-2 block text-sm text-white/80">Email</label>
+                <label className="mb-2 block text-sm text-white/80">
+                  Email
+                </label>
+
                 <input
                   type="email"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) =>
+                    setEmail(e.target.value)
+                  }
                   className="w-full rounded-md border border-white/15 bg-[#0b1a3a] px-4 py-3 text-white placeholder:text-white/40 outline-none focus:border-[#18d3c5] focus:ring-1 focus:ring-[#18d3c5]/40"
                   placeholder="you@example.com"
                   autoComplete="email"
@@ -356,19 +451,37 @@ useEffect(() => {
               </div>
 
               <div>
-                <label className="mb-2 block text-sm text-white/80">Password</label>
+                <label className="mb-2 block text-sm text-white/80">
+                  Password
+                </label>
+
                 <input
                   type="password"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) =>
+                    setPassword(e.target.value)
+                  }
                   className="w-full rounded-md border border-white/15 bg-[#0b1a3a] px-4 py-3 text-white placeholder:text-white/40 outline-none focus:border-[#18d3c5] focus:ring-1 focus:ring-[#18d3c5]/40"
                   placeholder="Enter password"
-                  autoComplete={authMode === "signup" ? "new-password" : "current-password"}
+                  autoComplete={
+                    authMode === "signup"
+                      ? "new-password"
+                      : "current-password"
+                  }
                 />
               </div>
 
-              {authError && <p className="text-sm text-red-400">{authError}</p>}
-              {authMessage && <p className="text-sm text-emerald-400">{authMessage}</p>}
+              {authError && (
+                <p className="text-sm text-red-400">
+                  {authError}
+                </p>
+              )}
+
+              {authMessage && (
+                <p className="text-sm text-emerald-400">
+                  {authMessage}
+                </p>
+              )}
 
               <button
                 type="submit"
@@ -380,8 +493,8 @@ useEffect(() => {
                     ? "Creating Account..."
                     : "Logging In..."
                   : authMode === "signup"
-                  ? "Create Account"
-                  : "Log In"}
+                    ? "Create Account"
+                    : "Log In"}
               </button>
             </form>
 
@@ -436,6 +549,26 @@ function FeatureCard({
     <div className="rounded-2xl border border-white/10 bg-[#021033] p-6">
       <h3 className="text-2xl font-bold">{title}</h3>
       <p className="mt-4 text-lg text-white/85">{desc}</p>
+    </div>
+  );
+}
+
+function GymDashboardFeatureCard({
+  title,
+  desc,
+}: {
+  title: string;
+  desc: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm">
+      <h3 className="text-2xl font-bold text-slate-950">
+        {title}
+      </h3>
+
+      <p className="mt-4 text-lg text-slate-700">
+        {desc}
+      </p>
     </div>
   );
 }

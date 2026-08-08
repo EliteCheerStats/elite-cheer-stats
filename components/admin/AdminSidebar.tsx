@@ -3,22 +3,58 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-const items = [
-  { href: "/admin", label: "Dashboard" },
-  { href: "/admin/assign-users", label: "Assign Users" },
-];
+type NavItem = {
+  href: string;
+  label: string;
+};
 
-const futureItems = [
-  "Team Mapping",
-  "Organization Viewer",
-  "User Lookup",
-  "View as Organization",
-  "Imports",
-  "System",
+type NavSection = {
+  label?: string;
+  items: NavItem[];
+};
+
+const sections: NavSection[] = [
+  {
+    items: [
+      {
+        href: "/admin",
+        label: "Dashboard",
+      },
+    ],
+  },
+  {
+    label: "Onboarding",
+    items: [
+      {
+        href: "/admin/trial-requests",
+        label: "Onboarding Queue",
+      },
+      {
+        href: "/admin/assign-users",
+        label: "Assign Users",
+      },
+    ],
+  },
+  {
+    label: "Organizations",
+    items: [],
+  },
+  {
+    label: "Operations",
+    items: [],
+  },
 ];
 
 export default function AdminSidebar() {
   const pathname = usePathname();
+
+  function isActive(href: string) {
+    if (href === "/admin") {
+      return pathname === "/admin";
+    }
+
+    return pathname.startsWith(href);
+  }
 
   return (
     <aside className="hidden w-72 shrink-0 border-r border-slate-800 bg-slate-950 text-white lg:block">
@@ -26,46 +62,49 @@ export default function AdminSidebar() {
         <div className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-400">
           Elite Cheer Stats
         </div>
-        <div className="mt-2 text-xl font-bold">Admin Console</div>
+
+        <div className="mt-2 text-xl font-bold">
+          Gym Dashboard Admin
+        </div>
       </div>
 
-      <nav className="space-y-1 p-4">
-        {items.map((item) => {
-          const active =
-            item.href === "/admin"
-              ? pathname === "/admin"
-              : pathname.startsWith(item.href);
+      <nav className="space-y-6 p-4">
+        {sections.map((section, sectionIndex) => (
+          <div key={section.label ?? `section-${sectionIndex}`}>
+            {section.label && (
+              <div className="px-4 pb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                {section.label}
+              </div>
+            )}
 
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={[
-                "block rounded-xl px-4 py-3 text-sm font-medium transition",
-                active
-                  ? "bg-blue-600 text-white"
-                  : "text-slate-300 hover:bg-slate-900 hover:text-white",
-              ].join(" ")}
-            >
-              {item.label}
-            </Link>
-          );
-        })}
+            <div className="space-y-1">
+              {section.items.map((item) => {
+                const active = isActive(item.href);
 
-        <div className="pt-5">
-          <div className="px-4 pb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Coming soon
-          </div>
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={[
+                      "block rounded-xl px-4 py-3 text-sm font-medium transition",
+                      active
+                        ? "bg-blue-600 text-white"
+                        : "text-slate-300 hover:bg-slate-900 hover:text-white",
+                    ].join(" ")}
+                  >
+                    {item.label}
+                  </Link>
+                );
+              })}
 
-          {futureItems.map((item) => (
-            <div
-              key={item}
-              className="cursor-not-allowed rounded-xl px-4 py-3 text-sm text-slate-600"
-            >
-              {item}
+              {section.items.length === 0 && (
+                <div className="px-4 py-2 text-sm text-slate-600">
+                  No tools yet
+                </div>
+              )}
             </div>
-          ))}
-        </div>
+          </div>
+        ))}
       </nav>
     </aside>
   );

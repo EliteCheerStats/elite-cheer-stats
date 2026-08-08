@@ -12,7 +12,15 @@ export default function LoginPageClient() {
   const [msg, setMsg] = useState("");
 
   const searchParams = useSearchParams();
-  const next = useMemo(() => searchParams.get("next") || "/", [searchParams]);
+
+  const next = useMemo(() => {
+    return (
+      searchParams.get("next") ||
+      searchParams.get("redirect") ||
+      "/"
+    );
+  }, [searchParams]);
+
   const mode = useMemo(
     () => (searchParams.get("mode") === "login" ? "login" : "signup"),
     [searchParams]
@@ -73,7 +81,10 @@ export default function LoginPageClient() {
             : "Create an account to follow teams and save your access. Upgrade to Premium at any time!"}
         </p>
 
-        <label className="mt-6 block text-sm text-white/80">Email</label>
+        <label className="mt-6 block text-sm text-white/80">
+          Email
+        </label>
+
         <input
           type="email"
           placeholder="you@email.com"
@@ -82,25 +93,38 @@ export default function LoginPageClient() {
           className="mt-2 w-full rounded-md bg-black/30 border border-white/10 px-3 py-2 text-sm outline-none focus:border-teal-400/50"
         />
 
-        <label className="mt-4 block text-sm text-white/80">Password</label>
+        <label className="mt-4 block text-sm text-white/80">
+          Password
+        </label>
+
         <input
           type="password"
-          placeholder={mode === "login" ? "Enter your password" : "Create a password"}
+          placeholder={
+            mode === "login"
+              ? "Enter your password"
+              : "Create a password"
+          }
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           className="mt-2 w-full rounded-md bg-black/30 border border-white/10 px-3 py-2 text-sm outline-none focus:border-teal-400/50"
         />
-{mode === "login" ? (
-  <div className="mt-2 flex justify-end">
-    <Link
-      href="/forgot-password"
-      className="text-xs text-white/60 transition hover:text-teal-400"
-    >
-      Forgot password?
-    </Link>
-  </div>
-) : null}
-        {msg && <div className="mt-3 text-sm text-red-300">{msg}</div>}
+
+        {mode === "login" ? (
+          <div className="mt-2 flex justify-end">
+            <Link
+              href="/forgot-password"
+              className="text-xs text-white/60 transition hover:text-teal-400"
+            >
+              Forgot password?
+            </Link>
+          </div>
+        ) : null}
+
+        {msg && (
+          <div className="mt-3 text-sm text-red-300">
+            {msg}
+          </div>
+        )}
 
         <button
           onClick={handleSubmit}
@@ -117,7 +141,10 @@ export default function LoginPageClient() {
         </button>
 
         <p className="mt-4 text-xs text-white/50">
-          {mode === "login" ? "Need an account? " : "Already have an account? "}
+          {mode === "login"
+            ? "Need an account? "
+            : "Already have an account? "}
+
           <Link
             href={
               mode === "login"
