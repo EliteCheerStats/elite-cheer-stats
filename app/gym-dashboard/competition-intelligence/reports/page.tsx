@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import GymDashboardSidebar from "@/app/gym-dashboard/components/GymDashboardSidebar";
 import { supabase } from "@/lib/supabaseClient";
 import { getActiveGymOrganization } from "@/lib/gym-dashboard/getActiveOrganization";
+import { useSeason } from "@/app/components/SeasonContext";
 
 type SavedReport = {
   id: string;
@@ -12,10 +13,12 @@ type SavedReport = {
   division: string | null;
   team_ids: string[] | null;
   created_at: string;
+  season_id: string;
 };
 
 export default function SavedCompetitionReportsPage() {
   const router = useRouter();
+  const { selectedSeason } = useSeason();
 
   const [reports, setReports] = useState<SavedReport[]>([]);
   const [orgName, setOrgName] = useState("Gym Dashboard");
@@ -24,8 +27,11 @@ export default function SavedCompetitionReportsPage() {
 
   useEffect(() => {
     async function loadSavedReports() {
+      if (!selectedSeason) return;
+
       setLoading(true);
       setError(null);
+      setReports([]);
 
       const {
         data: { session },
@@ -42,34 +48,36 @@ export default function SavedCompetitionReportsPage() {
 
       let activeOrganization;
 
-try {
-  activeOrganization = await getActiveGymOrganization(userId);
-} catch (membershipError) {
-  console.error(
-    "Organization membership lookup failed:",
-    membershipError
-  );
-  setError("Unable to load Gym Dashboard access.");
-  setLoading(false);
-  return;
-}
+      try {
+        activeOrganization = await getActiveGymOrganization(userId);
+      } catch (membershipError) {
+        console.error(
+          "Organization membership lookup failed:",
+          membershipError
+        );
+        setError("Unable to load Gym Dashboard access.");
+        setLoading(false);
+        return;
+      }
 
-if (!activeOrganization) {
-  setError("No active gym organization found for this account.");
-  setLoading(false);
-  return;
-}
+      if (!activeOrganization) {
+        setError("No active gym organization found for this account.");
+        setLoading(false);
+        return;
+      }
 
-const organizationId = activeOrganization.organizationId;
-const organizationName = activeOrganization.organizationName;
+      const organizationId = activeOrganization.organizationId;
+      const organizationName = activeOrganization.organizationName;
 
-setOrgName(organizationName);
+      setOrgName(organizationName);
+
       const { data: reportRows, error: reportsError } = await supabase
         .from("competition_reports")
         .select(
-          "id, report_name, division, team_ids, created_at"
+          "id, report_name, division, team_ids, created_at, season_id"
         )
         .eq("organization_id", organizationId)
+        .eq("season_id", selectedSeason.id)
         .order("created_at", { ascending: false });
 
       if (reportsError) {
@@ -83,7 +91,7 @@ setOrgName(organizationName);
     }
 
     loadSavedReports();
-  }, []);
+  }, [selectedSeason?.id]);
 
   function formatSavedDate(value: string) {
     return new Date(value).toLocaleString(undefined, {

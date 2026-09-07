@@ -6,6 +6,8 @@ import SubscriptionButton from "@/app/components/SubscriptionButton";
 import Script from "next/script";
 import SiteChrome from "./SiteChrome";
 import GymDashboardNavLink from "@/app/components/GymDashboardNavLink";
+import { SeasonProvider } from "@/app/components/SeasonContext";
+import SeasonSelector from "@/app/components/SeasonSelector";
 
 export const metadata: Metadata = {
   title: "Elite Cheer Stats | Competitive Cheer Analytics Platform",
@@ -76,7 +78,7 @@ function PublicSiteChrome({
             </a>
 
             <GymDashboardNavLink />
-
+            <SeasonSelector />
             <SubscriptionButton />
           </nav>
         </div>
@@ -131,15 +133,17 @@ export default function RootLayout({
       >
 
 
-        <SiteChrome
-          publicSiteChrome={
-            <PublicSiteChrome>
-  {children}
-</PublicSiteChrome>
-          }
-        >
-          {children}
-        </SiteChrome>
+        <SeasonProvider>
+  <SiteChrome
+    publicSiteChrome={
+      <PublicSiteChrome>
+        {children}
+      </PublicSiteChrome>
+    }
+  >
+    {children}
+  </SiteChrome>
+</SeasonProvider>
 
         <Analytics />
       </body>

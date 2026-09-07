@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { trackUserEvent } from "@/lib/user-events";
+import { useSeason } from "@/app/components/SeasonContext";
 
 type TeamHit = {
   team_id: string;
@@ -19,6 +20,8 @@ type TeamHit = {
 };
 
 export default function TeamSearchPage() {
+  const { selectedSeason } = useSeason();
+
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<TeamHit[]>([]);
   const [loading, setLoading] = useState(false);
@@ -60,7 +63,15 @@ export default function TeamSearchPage() {
     });
   }, []);
 
+  useEffect(() => {
+    setHits([]);
+    setHasSearched(false);
+    setError(null);
+  }, [selectedSeason?.id]);
+
   async function runSearch() {
+  if (!selectedSeason) return;
+
   setError(null);
   setHasSearched(true);
 
@@ -80,7 +91,7 @@ export default function TeamSearchPage() {
       .replaceAll("_", "\\_");
 
     const { data, error } = await supabase
-      .from("mv_team_search_lookup")
+      .from("mv_team_search_lookup_seasoned")
       .select(`
         team_id,
         program_id,
@@ -90,6 +101,7 @@ export default function TeamSearchPage() {
         first_event_date,
         last_event_date
       `)
+      .eq("season_id", selectedSeason.id)
       .ilike("search_text", `%${safeSearch}%`)
       .order("last_event_date", { ascending: false })
       .limit(50);

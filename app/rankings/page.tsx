@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { BarRankingsChart } from "./BarRankingsChart";
 import Link from "next/link";
+import { useSeason } from "@/app/components/SeasonContext";
 
 type SizeOpt = "Any" | "X-Small" | "Small" | "Medium" | "Large";
 type D2Mode = "Any" | "D2Only" | "NonD2Only";
@@ -49,7 +50,7 @@ const DEFAULT_FILTERS: Filters = {
   size: "Any",
 };
 
-const ACTIVE_SEASON_LABEL = "2025-2026 Season";
+
 
 function toNum(v: any): number {
   const n = typeof v === "number" ? v : Number(v);
@@ -79,6 +80,7 @@ async function handleShare() {
 }
 
 export default function RankingsPage() {
+    const { selectedSeason } = useSeason();
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   const [rows, setRows] = useState<RankingRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -100,21 +102,24 @@ export default function RankingsPage() {
   };
 
   const clearFilters = () => {
-    setFilters(DEFAULT_FILTERS);
-    setRows([]);
-    setHasSearched(false);
-    setError(null);
-    setLoading(false);
-  };
+  setFilters(DEFAULT_FILTERS);
+  setRows([]);
+  setHasSearched(false);
+  setError(null);
+  setLoading(false);
+};
+
+
 
   async function loadRows() {
+    if (!selectedSeason) return;
     setHasSearched(true);
     setLoading(true);
     setError(null);
 
     let q = supabase
-      .from("mv_rankings_rebuilt")
-      .select(`
+  .from("mv_rankings_rebuilt_seasoned")
+  .select(`
         team_id,
         program_id,
         program,
@@ -132,6 +137,7 @@ export default function RankingsPage() {
         best_event_score,
         comps
       `)
+      .eq("season_id", selectedSeason!.id)
       .order("avg_event_score", { ascending: false })
       .limit(200);
 
@@ -319,7 +325,9 @@ export default function RankingsPage() {
 
           <p className="mt-4 text-slate-300">
             Season average event score per team —{" "}
-            <span className="font-semibold text-slate-200">{ACTIVE_SEASON_LABEL}</span>.
+            <span className="font-semibold text-slate-200">
+  {selectedSeason?.label ?? "Season"}
+</span>.
           </p>
 
           <p className="mt-1 text-xs text-slate-400">

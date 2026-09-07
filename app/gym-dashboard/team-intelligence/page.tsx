@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import GymDashboardSidebar from "@/app/gym-dashboard/components/GymDashboardSidebar";
 import { getActiveGymOrganization } from "@/lib/gym-dashboard/getActiveOrganization";
+import { useSeason } from "@/app/components/SeasonContext";
 
 
 type TeamOption = {
@@ -110,6 +111,8 @@ function avg(values: number[]) {
 }
 
 export default function TeamIntelligencePage() {
+  const { selectedSeason } = useSeason();
+
   const [loading, setLoading] = useState(true);
   const [loadingEvents, setLoadingEvents] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -121,6 +124,8 @@ export default function TeamIntelligencePage() {
 
   useEffect(() => {
   async function loadTeams() {
+    if (!selectedSeason) return;
+
     setLoading(true);
     setError(null);
 
@@ -159,9 +164,10 @@ const organizationName = activeOrganization.organizationName;
 setOrgName(organizationName);
 
 const { data, error } = await supabase
-  .from("v_gym_overview_team_table")
+  .from("v_gym_overview_team_table_live_seasoned")
   .select("team_id, team, division, organization_name")
   .eq("organization_id", organizationId)
+  .eq("season_id", selectedSeason.id)
   .order("team", { ascending: true });
 
     if (error) {
@@ -184,20 +190,27 @@ const { data, error } = await supabase
   }
 
   loadTeams();
-}, []);
+}, [selectedSeason?.id]);
+
+  useEffect(() => {
+    setEvents([]);
+    setPercentile(null);
+    setSelectedTeamId("");
+  }, [selectedSeason?.id]);
 
   useEffect(() => {
     async function loadEvents() {
-      if (!selectedTeamId) return;
+      if (!selectedSeason || !selectedTeamId) return;
 
       setLoadingEvents(true);
       setError(null);
 
       const { data, error } = await supabase
-        .from("mv_gym_team_event_history")
+        .from("mv_gym_team_event_history_seasoned")
         .select(
           "event_id, event_name, weekend_date, event_score, ceiling_score, event_team_count, performance_count, hit_zero_count, hit_zero_rate"
         )
+        .eq("season_id", selectedSeason.id)
         .eq("team_id", selectedTeamId)
         .order("weekend_date", { ascending: true });
 
@@ -210,10 +223,11 @@ const { data, error } = await supabase
       }
 
 const { data: percentileData, error: percentileError } = await supabase
-  .from("mv_gym_dashboard_team_percentile")
+  .from("mv_gym_dashboard_team_percentile_seasoned")
   .select(
   "team_id, division, avg_event_score, season_events, team_count, national_percentile, top_percent"
 )
+  .eq("season_id", selectedSeason.id)
   .eq("team_id", selectedTeamId)
   .limit(1);
 
@@ -230,7 +244,7 @@ if (percentileError) {
     }
 
     loadEvents();
-  }, [selectedTeamId]);
+  }, [selectedTeamId, selectedSeason?.id]);
 
   const selectedTeam = teams.find((team) => team.team_id === selectedTeamId) ?? null;
 

@@ -6,6 +6,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import GymDashboardSidebar from "@/app/gym-dashboard/components/GymDashboardSidebar";
 import { getActiveGymOrganization } from "@/lib/gym-dashboard/getActiveOrganization";
+import { useSeason } from "@/app/components/SeasonContext";
 
 type Performance = {
   round_phase: string;
@@ -145,6 +146,8 @@ function eventSizeLabel(count?: number | null) {
 }
 
 export default function GymDashboardPage() {
+  const { selectedSeason } = useSeason();
+
   const [loading, setLoading] = useState(true);
   const [teamRows, setTeamRows] = useState<TeamRow[]>([]);
   const [topScore, setTopScore] = useState<TopScore | null>(null);
@@ -161,6 +164,8 @@ export default function GymDashboardPage() {
 
   useEffect(() => {
   async function loadDashboard() {
+    if (!selectedSeason) return;
+
     setLoading(true);
     setError(null);
 
@@ -208,62 +213,72 @@ const [
   nationalPercentileRes,
 ] = await Promise.all([
   supabase
-    .from("v_gym_overview_team_table_live")
+    .from("v_gym_overview_team_table_live_seasoned")
     .select("*")
     .eq("organization_id", organizationId)
+    .eq("season_id", selectedSeason.id)
     .order("event_score", { ascending: false }),
 
   supabase
-    .from("v_gym_overview_top_scoring_team_live")
+    .from("v_gym_overview_top_scoring_team_live_seasoned")
     .select("*")
     .eq("organization_id", organizationId)
+    .eq("season_id", selectedSeason.id)
     .maybeSingle(),
 
   supabase
-    .from("v_gym_overview_hit_zero_summary_live")
+    .from("v_gym_overview_hit_zero_summary_live_seasoned")
     .select("*")
     .eq("organization_id", organizationId)
+    .eq("season_id", selectedSeason.id)
     .maybeSingle(),
 
   supabase
-    .from("v_gym_overview_biggest_riser_live")
+    .from("v_gym_overview_biggest_riser_live_seasoned")
     .select("*")
     .eq("organization_id", organizationId)
+    .eq("season_id", selectedSeason.id)
     .maybeSingle(),
 
   supabase
-    .from("v_gym_overview_biggest_faller_live")
+    .from("v_gym_overview_biggest_faller_live_seasoned")
     .select("*")
     .eq("organization_id", organizationId)
+    .eq("season_id", selectedSeason.id)
     .maybeSingle(),
 
   supabase
-    .from("v_gym_overview_comps_live")
+    .from("v_gym_overview_comps_live_seasoned")
     .select("*")
     .eq("organization_id", organizationId)
+    .eq("season_id", selectedSeason.id)
     .order("weekend_date", { ascending: false }),
 
   supabase
-    .from("v_gym_overview_hit_zero_streaks_live")
+    .from("v_gym_overview_hit_zero_streaks_live_seasoned")
     .select("*")
     .eq("organization_id", organizationId)
+    .eq("season_id", selectedSeason.id)
     .gt("active_hit_zero_event_streak", 0)
     .order("active_hit_zero_event_streak", { ascending: false }),
 
   supabase
-    .from("v_gym_overview_hit_zero_slump_live")
+    .from("v_gym_overview_hit_zero_slump_live_seasoned")
     .select("*")
     .eq("organization_id", organizationId)
+    .eq("season_id", selectedSeason.id)
     .order("active_hit_zero_slump", { ascending: false }),
 
   supabase
-    .from("v_gym_overview_division_leaders_live")
+    .from("v_gym_overview_division_leaders_live_seasoned")
     .select("ranking_group, program, team, display_size_effective, avg_event_score")
     .eq("organization_id", organizationId)
+    .eq("season_id", selectedSeason.id)
     .order("ranking_group"),
 
   Promise.resolve({ data: [], error: null }),
 ]);
+
       const firstError =
         teamTableRes.error ||
         topScoreRes.error ||
@@ -298,10 +313,11 @@ const teamNameById = new Map(
 
 if (teamIds.length > 0) {
   const { data: percentileData, error: percentileError } = await supabase
-    .from("mv_gym_dashboard_team_percentile")
+    .from("mv_gym_dashboard_team_percentile_seasoned")
     .select(
   "team_id, division, avg_event_score, season_events, team_count, national_percentile, top_percent"
 )
+    .eq("season_id", selectedSeason.id)
     .in("team_id", teamIds)
     .order("top_percent", { ascending: true });
 
@@ -338,7 +354,7 @@ setLeaders((divisionLeadersRes.data ?? []) as DivisionLeader[]);
 }
 
 loadDashboard();
-}, []);
+}, [selectedSeason?.id]);
 
 const [orgName, setOrgName] = useState("Gym Dashboard");
 

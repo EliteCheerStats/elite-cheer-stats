@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
+import { useSeason } from "@/app/components/SeasonContext";
 import {
   ResponsiveContainer,
   LineChart,
@@ -481,6 +482,7 @@ function buildComparisonVerdict(params: {
 }
 
 export default function ComparePage() {
+  const { selectedSeason } = useSeason();
   const [searchA, setSearchA] = useState("");
   const [searchB, setSearchB] = useState("");
   const [optionsA, setOptionsA] = useState<TeamOption[]>([]);
@@ -574,6 +576,24 @@ export default function ComparePage() {
   }, [isPremium, showCeiling]);
 
   useEffect(() => {
+    setTeamA(null);
+    setTeamB(null);
+    setSearchA("");
+    setSearchB("");
+    setOptionsA([]);
+    setOptionsB([]);
+    setEventsA([]);
+    setEventsB([]);
+    setCeilingsA(new Map());
+    setCeilingsB(new Map());
+    setPerfA([]);
+    setPerfB([]);
+    setError(null);
+  }, [selectedSeason?.id]);
+
+  useEffect(() => {
+  if (!selectedSeason) return;
+
   const q = searchA.trim();
 
   if (q.length < 2) {
@@ -591,8 +611,9 @@ export default function ComparePage() {
       const safe = q.replace(/,/g, " ").trim().toLowerCase();
 
       const { data, error } = await supabase
-        .from("mv_compare_team_lookup")
+        .from("mv_compare_team_lookup_seasoned")
         .select("team_id, program, team, division")
+        .eq("season_id", selectedSeason.id)
         .ilike("search_text", `%${safe}%`)
         .order("program", { ascending: true })
         .order("team", { ascending: true })
@@ -617,9 +638,11 @@ export default function ComparePage() {
     cancelled = true;
     clearTimeout(timer);
   };
-}, [searchA]);
+}, [searchA, selectedSeason?.id]);
 
   useEffect(() => {
+  if (!selectedSeason) return;
+
   const q = searchB.trim();
 
   if (q.length < 2) {
@@ -637,8 +660,9 @@ export default function ComparePage() {
       const safe = q.replace(/,/g, " ").trim().toLowerCase();
 
       const { data, error } = await supabase
-        .from("mv_compare_team_lookup")
+        .from("mv_compare_team_lookup_seasoned")
         .select("team_id, program, team, division")
+        .eq("season_id", selectedSeason.id)
         .ilike("search_text", `%${safe}%`)
         .order("program", { ascending: true })
         .order("team", { ascending: true })
@@ -663,9 +687,11 @@ export default function ComparePage() {
     cancelled = true;
     clearTimeout(timer);
   };
-}, [searchB]);
+}, [searchB, selectedSeason?.id]);
 
   useEffect(() => {
+    if (!selectedSeason) return;
+
     if (!teamA?.team_id) {
       setEventsA([]);
       setCeilingsA(new Map());
@@ -681,7 +707,7 @@ export default function ComparePage() {
         setError(null);
 
         const { data: scoreData, error: scoreErr } = await supabase
-  .from("v_team_event_scores_uuid")
+  .from("v_team_event_scores_seasoned")
   .select(
     "team_id, program, team, event_id, event_name, weekend_date, division, event_score"
   )
@@ -699,14 +725,16 @@ export default function ComparePage() {
         const [ceilingRes, perfRes] = await Promise.all([
           eventIds.length
             ? supabase
-                .from("mv_team_event_ceiling_rebuilt")
+                .from("mv_team_event_ceiling_rebuilt_seasoned")
                 .select("team_id, event_id, ceiling_score, ceiling_delta, ceiling_method, ceiling_supported, round_count")
+                .eq("season_id", selectedSeason.id)
                 .in("event_id", eventIds)
                 .eq("team_id", teamA.team_id)
             : Promise.resolve({ data: [], error: null } as any),
           supabase
-            .from("v_results_normalized")
+            .from("v_results_normalized_seasoned")
             .select("team_id, event_id, weekend_date, round, round_raw, round_phase, deductions")
+            .eq("season_id", selectedSeason.id)
             .eq("team_id", teamA.team_id)
             .in("round_phase", ["Prelims", "Finals"])
             .order("weekend_date", { ascending: true }),
@@ -733,9 +761,11 @@ export default function ComparePage() {
     return () => {
       cancelled = true;
     };
-  }, [teamA?.team_id]);
+  }, [teamA?.team_id, selectedSeason?.id]);
 
   useEffect(() => {
+    if (!selectedSeason) return;
+
     if (!teamB?.team_id) {
       setEventsB([]);
       setCeilingsB(new Map());
@@ -751,7 +781,7 @@ export default function ComparePage() {
         setError(null);
 
         const { data: scoreData, error: scoreErr } = await supabase
-  .from("v_team_event_scores_uuid")
+  .from("v_team_event_scores_seasoned")
   .select(
     "team_id, program, team, event_id, event_name, weekend_date, division, event_score"
   )
@@ -769,14 +799,16 @@ export default function ComparePage() {
         const [ceilingRes, perfRes] = await Promise.all([
           eventIds.length
             ? supabase
-                .from("mv_team_event_ceiling_rebuilt")
+                .from("mv_team_event_ceiling_rebuilt_seasoned")
                 .select("team_id, event_id, ceiling_score, ceiling_delta, ceiling_method, ceiling_supported, round_count")
+                .eq("season_id", selectedSeason.id)
                 .in("event_id", eventIds)
                 .eq("team_id", teamB.team_id)
             : Promise.resolve({ data: [], error: null } as any),
           supabase
-            .from("v_results_normalized")
+            .from("v_results_normalized_seasoned")
             .select("team_id, event_id, weekend_date, round, round_raw, round_phase, deductions")
+            .eq("season_id", selectedSeason.id)
             .eq("team_id", teamB.team_id)
             .in("round_phase", ["Prelims", "Finals"])
             .order("weekend_date", { ascending: true }),
@@ -803,7 +835,7 @@ export default function ComparePage() {
     return () => {
       cancelled = true;
     };
-  }, [teamB?.team_id]);
+  }, [teamB?.team_id, selectedSeason?.id]);
 
   const seriesA = useMemo<TeamSeriesPoint[]>(() => {
     return eventsA.map((r) => ({

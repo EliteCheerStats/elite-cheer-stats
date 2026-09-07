@@ -2,6 +2,7 @@
 
 import React, { Fragment, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import { useSeason } from "@/app/components/SeasonContext";
 import {
   ResponsiveContainer,
   CartesianGrid,
@@ -173,6 +174,8 @@ export default function CompBuilderPage() {
 }
 
 function CompBuilderInner() {
+  const { selectedSeason } = useSeason();
+
   const [gateEmail, setGateEmail] = useState("");
   const [unlocked, setUnlocked] = useState(false);
   const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
@@ -228,10 +231,24 @@ function CompBuilderInner() {
   }, []);
 
   useEffect(() => {
+    if (!selectedSeason) return;
+
+    setSearchTerm("");
+    setSearchResults([]);
+    setSearchInputKey((prev) => prev + 1);
+    setRoster([]);
+    setPrimaryTeamId("");
+    setExpandedTeams([]);
+    setTeamRows({});
+    setTeamPerformanceRows({});
+    saveCompState([], "");
+  }, [selectedSeason?.id]);
+
+  useEffect(() => {
     const runSearch = async () => {
       const term = searchTerm.trim();
 
-      if (!SAVE_TO_SUPABASE || term.length < 2) {
+      if (!selectedSeason || !SAVE_TO_SUPABASE || term.length < 2) {
         setSearchResults([]);
         setSearchLoading(false);
         return;
@@ -242,8 +259,9 @@ function CompBuilderInner() {
       const safeTerm = term.replace(/,/g, " ").trim();
 
       const { data, error } = await supabase
-        .from("v_team_event_scores")
+        .from("v_team_event_scores_seasoned")
         .select("team_id, program, team")
+        .eq("season_id", selectedSeason.id)
         .not("team", "is", null)
         .or(`team.ilike.%${safeTerm}%,program.ilike.%${safeTerm}%`)
         .limit(200);
@@ -315,11 +333,11 @@ function CompBuilderInner() {
 
     const timeout = setTimeout(runSearch, 250);
     return () => clearTimeout(timeout);
-  }, [searchTerm]);
+  }, [searchTerm, selectedSeason?.id]);
 
   useEffect(() => {
     const loadRosterData = async () => {
-      if (!SAVE_TO_SUPABASE || roster.length === 0) {
+      if (!selectedSeason || !SAVE_TO_SUPABASE || roster.length === 0) {
         setTeamRows({});
         setTeamPerformanceRows({});
         return;
@@ -330,10 +348,11 @@ function CompBuilderInner() {
       const teamIds = Array.from(new Set(roster.map((t) => t.team_id)));
 
       const { data: eventData, error: eventError } = await supabase
-        .from("v_team_event_scores")
+        .from("v_team_event_scores_seasoned")
         .select(
           "team_id, event_id, program, team, event_name, weekend_date, deductions, performance_score, event_score"
         )
+        .eq("season_id", selectedSeason.id)
         .in("team_id", teamIds)
         .not("event_score", "is", null)
         .order("weekend_date", { ascending: true });
@@ -360,10 +379,11 @@ function CompBuilderInner() {
 
       if (teamIds.length > 0 && eventIds.length > 0) {
         const { data: perfRes, error: perfError } = await supabase
-          .from("v_results_normalized")
+          .from("v_results_normalized_seasoned")
           .select(
             "team_id, event_id, weekend_date, round_phase, deductions, performance_score, event_score"
           )
+          .eq("season_id", selectedSeason.id)
           .in("team_id", teamIds)
           .in("event_id", eventIds)
           .in("round_phase", ["Prelims", "Finals"])
@@ -380,10 +400,11 @@ function CompBuilderInner() {
 
       if (teamIds.length > 0 && eventIds.length > 0) {
         const { data: ceilingRes, error: ceilingError } = await supabase
-          .from("mv_team_event_ceiling_rebuilt")
+          .from("mv_team_event_ceiling_rebuilt_seasoned")
           .select(
             "team_id, event_id, ceiling_score, ceiling_delta, ceiling_method, ceiling_supported, round_count"
           )
+          .eq("season_id", selectedSeason.id)
           .in("team_id", teamIds)
           .in("event_id", eventIds);
 
@@ -441,7 +462,7 @@ function CompBuilderInner() {
     };
 
     loadRosterData();
-  }, [roster]);
+  }, [roster, selectedSeason?.id]);
 
   useEffect(() => {
   let mounted = true;

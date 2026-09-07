@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useSeason } from "@/app/components/SeasonContext";
 
 type GymDashboardSidebarProps = {
   organizationName: string;
@@ -20,6 +21,12 @@ export default function GymDashboardSidebar({
   role = "Owner",
 }: GymDashboardSidebarProps) {
   const pathname = usePathname();
+  const {
+    seasons,
+    selectedSeason,
+    setSelectedSeasonId,
+    loading: seasonLoading,
+  } = useSeason();
 
   const initials = organizationName
     .split(" ")
@@ -70,9 +77,19 @@ export default function GymDashboardSidebar({
       <div className="mt-auto space-y-4">
         <div>
           <div className="mb-2 text-sm text-slate-300">Current Season</div>
-          <div className="rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 font-bold">
-            2025–2026
-          </div>
+
+          <select
+            value={selectedSeason?.id ?? ""}
+            onChange={(e) => setSelectedSeasonId(e.target.value)}
+            disabled={seasonLoading || !selectedSeason}
+            className="w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 font-bold text-white outline-none disabled:opacity-60"
+          >
+            {seasons.map((season) => (
+              <option key={season.id} value={season.id}>
+                {season.label.replace(" Season", "")}
+              </option>
+            ))}
+          </select>
         </div>
 
         <div className="border-t border-slate-800 pt-4">

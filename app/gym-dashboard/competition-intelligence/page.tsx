@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import GymDashboardSidebar from "@/app/gym-dashboard/components/GymDashboardSidebar";
 import { supabase } from "@/lib/supabaseClient";
 import { getActiveGymOrganization } from "@/lib/gym-dashboard/getActiveOrganization";
+import { useSeason } from "@/app/components/SeasonContext";
 
 const MY_TEAM_ID = "royalty";
 type MyTeamOption = {
@@ -429,6 +430,7 @@ type CompetitionProfileRow = {
 };
 export default function CompetitionIntelligencePage() {
   const router = useRouter();
+  const { selectedSeason } = useSeason();
   const [teams, setTeams] = useState<Team[]>([]);
   const [myTeams, setMyTeams] = useState<MyTeamOption[]>([]);
   const [myTeamId, setMyTeamId] = useState(MY_TEAM_ID);
@@ -452,8 +454,15 @@ export default function CompetitionIntelligencePage() {
 
 useEffect(() => {
   async function loadCompetitionProfiles() {
+    if (!selectedSeason) return;
+
     setLoading(true);
     setError(null);
+    setTeams([]);
+    setMyTeams([]);
+    setSelectedIds([]);
+    setSearchTerm("");
+    setSavedMessage("");
 
     const {
       data: { session },
@@ -526,10 +535,11 @@ const { data: accessRows, error: accessError } = await supabase
 
     // Load the full eligible population for opponent search.
     const { data: profileRows, error: profilesError } = await supabase
-      .from("v_competition_intelligence_team_profiles")
+      .from("v_competition_intelligence_team_profiles_seasoned")
       .select(
         "id, program_id, program, team, name, division, average, ceiling, best, best_event, hit_zero, events, avg_event_size_stars, avg_event_size_label, national_percentile, trend",
       )
+      .eq("season_id", selectedSeason.id)
       .not("division", "ilike", "%U16%")
       .not("division", "ilike", "%U18%")
       .not("division", "ilike", "%International%")
@@ -584,9 +594,9 @@ const { data: accessRows, error: accessError } = await supabase
     const firstMyTeam = options[0];
 
     if (!firstMyTeam) {
-      setError(
-        "No competition intelligence profiles were found for this gym's authorized teams.",
-      );
+      setMyTeamId("");
+      setFocusedId("");
+      setSelectedIds([]);
       setLoading(false);
       return;
     }
@@ -601,6 +611,7 @@ const { data: accessRows, error: accessError } = await supabase
       .select("selected_team_ids")
       .eq("organization_id", activeOrganizationId)
       .eq("my_team_id", firstMyTeamId)
+      .eq("season_id", selectedSeason.id)
       .maybeSingle();
 
     if (savedFieldError) {
@@ -628,7 +639,7 @@ const { data: accessRows, error: accessError } = await supabase
   }
 
   loadCompetitionProfiles();
-}, []);
+}, [selectedSeason?.id]);
 
   const selectedTeams = teams.filter((t) => selectedIds.includes(t.id));
   const selectedOpponents = selectedTeams.filter((team) => team.id !== myTeamId);
@@ -719,8 +730,8 @@ if (!myTeam) {
   const consistencyRank = rankOf("hitZero");
 
   async function saveReport() {
-  if (!organizationId || !currentUserId) {
-    setError("Unable to save this field. Organization or user information is missing.");
+  if (!organizationId || !currentUserId || !selectedSeason) {
+    setError("Unable to save this field. Organization, user, or season information is missing.");
     return;
   }
 
@@ -730,12 +741,13 @@ if (!myTeam) {
       {
         organization_id: organizationId,
         my_team_id: myTeamId,
+        season_id: selectedSeason.id,
         selected_team_ids: selectedIds,
         created_by: currentUserId,
         updated_at: new Date().toISOString(),
       },
       {
-        onConflict: "organization_id,my_team_id",
+        onConflict: "organization_id,my_team_id,season_id",
       }
     );
 
@@ -787,8 +799,8 @@ async function changeMyTeam(teamId: string) {
   console.log("Changing My Team to:", teamId);
   console.log("Current organizationId:", organizationId);
 
-  if (!organizationId) {
-    console.log("No organizationId available; resetting field.");
+  if (!organizationId || !selectedSeason) {
+    console.log("No organizationId or selected season available; resetting field.");
     setSelectedIds([teamId]);
     return;
   }
@@ -798,6 +810,7 @@ async function changeMyTeam(teamId: string) {
     .select("selected_team_ids")
     .eq("organization_id", organizationId)
     .eq("my_team_id", teamId)
+    .eq("season_id", selectedSeason.id)
     .maybeSingle();
 
   console.log("Saved field returned:", savedField);
@@ -888,7 +901,7 @@ if (loading) {
 <button
   onClick={() =>
     router.push(
-      `/gym-dashboard/competition-intelligence/report?organizationId=${organizationId}&myTeamId=${myTeamId}&teamIds=${selectedIds.join(",")}`
+      `/gym-dashboard/competition-intelligence/report?organizationId=${organizationId}&myTeamId=${myTeamId}&teamIds=${selectedIds.join(",")}&seasonId=${selectedSeason?.id ?? ""}`
     )
   }
   className="rounded-xl bg-purple-600 px-4 py-2 font-semibold text-white shadow-sm hover:bg-purple-700"

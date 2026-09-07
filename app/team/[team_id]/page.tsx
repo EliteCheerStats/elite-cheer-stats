@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
+import { useSeason } from "@/app/components/SeasonContext";
 import {
   CartesianGrid,
   Line,
@@ -61,6 +62,7 @@ function computeHitRate(rows: Row[]) {
 }
 
 export default function TeamProfilePage() {
+  const { selectedSeason } = useSeason();
   const params = useParams<{ team_id: string }>();
   const teamId = params.team_id;
 
@@ -141,6 +143,8 @@ export default function TeamProfilePage() {
     let cancelled = false;
 
     async function load() {
+      if (!selectedSeason) return;
+
       try {
         setLoading(true);
         setError(null);
@@ -148,7 +152,7 @@ export default function TeamProfilePage() {
         const currentTeamId = params.team_id;
 
         const { data: eventData, error: eventError } = await supabase
-          .from("v_team_event_scores_uuid")
+          .from("v_team_event_scores_seasoned")
           .select(`
             team_id,
             program_id,
@@ -161,6 +165,7 @@ export default function TeamProfilePage() {
             size_effective,
             event_score
           `)
+          .eq("season_id", selectedSeason.id)
           .eq("team_id", currentTeamId)
           .order("weekend_date", { ascending: true });
 
@@ -201,7 +206,7 @@ export default function TeamProfilePage() {
           const selectedTeam = String(eventRows[0]?.team ?? "").trim().toLowerCase();
 
           const { data: perfRes, error: perfError } = await supabase
-  .from("v_results_normalized")
+  .from("v_results_normalized_seasoned")
   .select(`
     team,
     program,
@@ -217,6 +222,7 @@ export default function TeamProfilePage() {
     performance_score,
     event_score
   `)
+  .eq("season_id", selectedSeason.id)
   .eq("team_id", currentTeamId)
   .in("event_id", eventIds)
   .in("round_phase", ["Prelims", "Finals"])
@@ -226,7 +232,7 @@ export default function TeamProfilePage() {
           else perfData = (perfRes ?? []).filter((r: any) => String(r.team ?? "").trim().toLowerCase() === selectedTeam);
 
           const { data: ceilingRes, error: ceilingError } = await supabase
-            .from("mv_team_event_ceiling_rebuilt")
+            .from("mv_team_event_ceiling_rebuilt_seasoned")
             .select(`
               team_id,
               event_id,
@@ -236,6 +242,7 @@ export default function TeamProfilePage() {
               ceiling_supported,
               round_count
             `)
+            .eq("season_id", selectedSeason.id)
             .in("event_id", eventIds)
             .eq("team_id", currentTeamId);
 
@@ -263,7 +270,7 @@ export default function TeamProfilePage() {
         });
 
         const { data: champRaw, error: champError } = await supabase
-          .from("v_team_event_scores_championship")
+          .from("v_team_event_scores_championship_seasoned")
           .select(`
             team_id,
             program_id,
@@ -281,6 +288,7 @@ export default function TeamProfilePage() {
             deductions,
             round
           `)
+          .eq("season_id", selectedSeason.id)
           .eq("team_id", currentTeamId);
 
         if (champError) {
@@ -341,7 +349,7 @@ export default function TeamProfilePage() {
     return () => {
       cancelled = true;
     };
-  }, [params.team_id]);
+  }, [params.team_id, selectedSeason?.id]);
 
   const filtered = useMemo(() => rows, [rows]);
   const hitRate = useMemo(() => computeHitRate(performanceRows), [performanceRows]);

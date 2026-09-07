@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import GymDashboardSidebar from "@/app/gym-dashboard/components/GymDashboardSidebar";
 import { getActiveGymOrganization } from "@/lib/gym-dashboard/getActiveOrganization";
+import { useSeason } from "@/app/components/SeasonContext";
 
 type OrgTeam = {
   id: string;
@@ -305,6 +306,7 @@ function TrendChart({ data }: { data: { date: string; score: number }[] }) {
 
 export default function DivisionIntelligencePage() {
   const pathname = usePathname();
+  const { selectedSeason } = useSeason();
   
 
   const [organizationName, setOrganizationName] = useState(
@@ -319,6 +321,8 @@ export default function DivisionIntelligencePage() {
 
   useEffect(() => {
   async function loadOrgAndTeams() {
+    if (!selectedSeason) return;
+
     const {
       data: { user },
       error: userError,
@@ -364,7 +368,7 @@ setOrganizationInitials(
 );
 
     const { data: teamRows, error: teamsError } = await supabase
-      .from("v_gym_overview_team_table")
+      .from("v_gym_overview_team_table_live_seasoned")
       .select(`
         team_id,
         team,
@@ -372,6 +376,7 @@ setOrganizationInitials(
         organization_name
       `)
       .eq("organization_id", organizationId)
+      .eq("season_id", selectedSeason.id)
       .order("team", { ascending: true });
 
     if (teamsError) {
@@ -408,7 +413,7 @@ setOrganizationInitials(
   }
 
   loadOrgAndTeams();
-}, []);
+}, [selectedSeason?.id]);
 
 const selectedTeam = useMemo(() => {
   return teams.find((t) => t.id === selectedTeamId) ?? null;
@@ -485,7 +490,12 @@ const bestScoreDate = rpcTeam?.best_score_date
   : "—";
 
 useEffect(() => {
-  if (!selectedTeamId) {
+  setSelectedTeamId("");
+  setRpcData(null);
+}, [selectedSeason?.id]);
+
+useEffect(() => {
+  if (!selectedSeason || !selectedTeamId) {
     setRpcData(null);
     return;
   }
@@ -494,9 +504,10 @@ useEffect(() => {
 
   async function loadRpcDivisionIntelligence() {
     const { data, error } = await supabase.rpc(
-      "get_division_intelligence_page",
+      "get_division_intelligence_page_seasoned",
       {
         p_team_id: selectedTeamId,
+        p_season_id: selectedSeason!.id,
       },
     );
 
@@ -509,7 +520,7 @@ useEffect(() => {
   }
 
   loadRpcDivisionIntelligence();
-}, [selectedTeamId]);
+}, [selectedTeamId, selectedSeason?.id]);
 const gapToAverage = currentTeam.avgScore - divisionAvg.avgScore;
 const gapToTop25 = currentTeam.avgScore - cutLines.top25;
 const gapToTop10 = currentTeam.avgScore - cutLines.top10;

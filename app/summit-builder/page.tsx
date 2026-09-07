@@ -2,6 +2,7 @@
 
 import React, { Fragment, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import { useSeason } from "@/app/components/SeasonContext";
 import {
   ResponsiveContainer,
   CartesianGrid,
@@ -346,6 +347,8 @@ function PostSummitTooltip({ active, payload, label }: any) {
 }
 
 export default function SummitBuilderPage() {
+  const { selectedSeason } = useSeason();
+
   const [selectedExperienceKey, setSelectedExperienceKey] =
     useState<SummitExperienceKey>("SUMMIT_2026");
   const selectedExperience = SUMMIT_EXPERIENCES[selectedExperienceKey];
@@ -473,6 +476,29 @@ export default function SummitBuilderPage() {
   }, []);
 
   useEffect(() => {
+    if (!selectedSeason) return;
+
+    setPostDivisions([]);
+    setPostRoundsByDivision({});
+    setSelectedPostDivision("");
+    setSelectedPostRound("Finals");
+    setPostResults([]);
+    setAdvancedTeamIds([]);
+    setPostError("");
+
+    setRoster([]);
+    setTeamRows({});
+    setTeamPerformanceRows({});
+    setPrimaryTeamId("");
+    setExpandedTeams([]);
+    setLoadedDivision("");
+    setLoadedRound("Wild Card");
+    setActiveView("Wild Card");
+    setLoadStatus("idle");
+    setLoadMessage("");
+  }, [selectedSeason?.id]);
+
+  useEffect(() => {
     async function loadOptions() {
       setOptionsLoading(true);
       setOptionsError("");
@@ -538,15 +564,20 @@ export default function SummitBuilderPage() {
 
   useEffect(() => {
     async function loadPostOptions() {
-      if (selectedExperience.mode !== "post" || !selectedExperience.championshipEventId) {
+      if (
+        !selectedSeason ||
+        selectedExperience.mode !== "post" ||
+        !selectedExperience.championshipEventId
+      ) {
         return;
       }
 
       setPostError("");
 
       const { data, error } = await supabase
-        .from("v_championship_results_with_ecs")
+        .from("v_championship_results_with_ecs_seasoned")
         .select("division, round")
+        .eq("season_id", selectedSeason.id)
         .eq("event_id", selectedExperience.championshipEventId)
         .order("division", { ascending: true })
         .order("round", { ascending: true });
@@ -600,6 +631,7 @@ export default function SummitBuilderPage() {
     selectedExperience.mode,
     selectedExperience.championshipEventId,
     selectedPostDivision,
+    selectedSeason?.id,
   ]);
 
   useEffect(() => {
@@ -614,6 +646,7 @@ export default function SummitBuilderPage() {
 
   async function loadPostResults() {
     if (
+      !selectedSeason ||
       selectedExperience.mode !== "post" ||
       !selectedExperience.championshipEventId ||
       !selectedPostDivision ||
@@ -628,10 +661,11 @@ export default function SummitBuilderPage() {
     setPostError("");
 
     const { data, error } = await supabase
-      .from("v_championship_results_with_ecs")
+      .from("v_championship_results_with_ecs_seasoned")
       .select(
         "event_id, event_name, division, round, rank, program, team, team_id, summit_score, ecs_average, score_delta"
       )
+      .eq("season_id", selectedSeason.id)
       .eq("event_id", selectedExperience.championshipEventId)
       .eq("division", selectedPostDivision)
       .order("rank", { ascending: true });
@@ -694,7 +728,7 @@ export default function SummitBuilderPage() {
 
   useEffect(() => {
     const loadRosterData = async () => {
-      if (!activeRoster.length) {
+      if (!selectedSeason || !activeRoster.length) {
         setTeamRows({});
         setTeamPerformanceRows({});
         return;
@@ -705,10 +739,11 @@ export default function SummitBuilderPage() {
       const teamIds = Array.from(new Set(activeRoster.map((t) => t.team_id)));
 
       const { data: eventData, error: eventError } = await supabase
-        .from("v_team_event_scores")
+        .from("v_team_event_scores_seasoned")
         .select(
           "team_id, event_id, program, team, event_name, weekend_date, deductions, performance_score, event_score"
         )
+        .eq("season_id", selectedSeason.id)
         .in("team_id", teamIds)
         .not("event_score", "is", null)
         .order("weekend_date", { ascending: true });
@@ -731,10 +766,11 @@ export default function SummitBuilderPage() {
 
       if (teamIds.length > 0 && eventIds.length > 0) {
         const { data: perfRes, error: perfError } = await supabase
-          .from("v_results_normalized")
+          .from("v_results_normalized_seasoned")
           .select(
             "team_id, event_id, weekend_date, round_phase, deductions, performance_score, event_score"
           )
+          .eq("season_id", selectedSeason.id)
           .in("team_id", teamIds)
           .in("event_id", eventIds)
           .in("round_phase", ["Prelims", "Finals"])
@@ -751,10 +787,11 @@ export default function SummitBuilderPage() {
 
       if (teamIds.length > 0 && eventIds.length > 0) {
         const { data: ceilingRes, error: ceilingError } = await supabase
-          .from("mv_team_event_ceiling_rebuilt")
+          .from("mv_team_event_ceiling_rebuilt_seasoned")
           .select(
             "team_id, event_id, ceiling_score, ceiling_delta, ceiling_method, ceiling_supported, round_count"
           )
+          .eq("season_id", selectedSeason.id)
           .in("team_id", teamIds)
           .in("event_id", eventIds);
 
@@ -812,7 +849,7 @@ export default function SummitBuilderPage() {
     };
 
     loadRosterData();
-  }, [activeRoster]);
+  }, [activeRoster, selectedSeason?.id]);
 
   const previewCountValue = hasMounted ? previewCount : 0;
   const previewLimitReached = previewCountValue >= FREE_PREVIEW_LIMIT;

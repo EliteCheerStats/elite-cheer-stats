@@ -29,7 +29,8 @@ export default function CompetitionIntelligenceReportPage() {
   const searchParams = useSearchParams();
 
   const organizationId = searchParams.get("organizationId");
-const myTeamId = searchParams.get("myTeamId");
+  const myTeamId = searchParams.get("myTeamId");
+  const seasonId = searchParams.get("seasonId");
 
 const [organizationName, setOrganizationName] =
   useState("Gym Dashboard");
@@ -60,9 +61,9 @@ const [organizationName, setOrganizationName] =
       setLoading(true);
       setError(null);
 
-      if (!organizationId || !myTeamId || teamIds.length === 0) {
+      if (!organizationId || !myTeamId || !seasonId || teamIds.length === 0) {
   setError(
-    "No organization or competition field was provided for this report."
+    "No organization, season, or competition field was provided for this report."
   );
   setLoading(false);
   return;
@@ -110,10 +111,11 @@ if (!membership || organization?.subscription_status !== "active") {
 
 setOrganizationName(organization.name ?? "Gym Dashboard");
       const { data, error: teamError } = await supabase
-        .from("v_competition_intelligence_team_profiles")
+        .from("v_competition_intelligence_team_profiles_seasoned")
         .select(
           "id, program_id, program, team, name, division, average, ceiling, best, best_event, hit_zero, events, avg_event_size_stars, avg_event_size_label, national_percentile, trend"
         )
+        .eq("season_id", seasonId)
         .in("id", teamIds);
 
       if (teamError) {
@@ -136,7 +138,7 @@ setOrganizationName(organization.name ?? "Gym Dashboard");
     }
 
     loadReportTeams();
-  }, [organizationId, myTeamId, teamIds]);
+  }, [organizationId, myTeamId, seasonId, teamIds]);
 
   const myTeam =
     teams.find((team) => team.id === myTeamId) ?? teams[0];
@@ -495,7 +497,7 @@ const materiallyDifferentEventContext =
   useEffect(() => {
   if (loading || error || !myTeam || teams.length === 0) return;
 
-  const generationKey = `${myTeam.id}:${teams
+  const generationKey = `${seasonId ?? "no-season"}:${myTeam.id}:${teams
     .map((team) => team.id)
     .sort()
     .join(",")}`;
@@ -620,7 +622,7 @@ if (!response.ok) {
   }
 
   generateNarrative();
-}, [loading, error, myTeamId, teams]);
+}, [loading, error, myTeamId, seasonId, teams]);
 
 async function handleSaveReport() {
   if (!myTeam || teams.length === 0) {
@@ -646,9 +648,9 @@ async function handleSaveReport() {
       throw new Error("You must be signed in to save this report.");
     }
 
-    if (!organizationId) {
+    if (!organizationId || !seasonId) {
   throw new Error(
-    "No Gym Dashboard organization was provided for this report."
+    "No Gym Dashboard organization or season was provided for this report."
   );
 }
 
@@ -657,6 +659,7 @@ async function handleSaveReport() {
     const reportSnapshot = {
       version: 1,
       generatedAt,
+      seasonId,
 
       myTeamId: myTeam.id,
       teamIds: teams.map((team) => team.id),
@@ -714,6 +717,7 @@ async function handleSaveReport() {
       .from("competition_reports")
       .insert({
         organization_id: organizationId,
+        season_id: seasonId,
         competition_field_id: null,
         my_team_id: myTeam.id,
         created_by: user.id,
