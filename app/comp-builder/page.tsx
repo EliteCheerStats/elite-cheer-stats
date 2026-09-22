@@ -259,19 +259,26 @@ function CompBuilderInner() {
       const safeTerm = term.replace(/,/g, " ").trim();
 
       const { data, error } = await supabase
-        .from("v_team_event_scores_seasoned")
-        .select("team_id, program, team")
-        .eq("season_id", selectedSeason.id)
-        .not("team", "is", null)
-        .or(`team.ilike.%${safeTerm}%,program.ilike.%${safeTerm}%`)
-        .limit(200);
+  .from("mv_team_search_lookup_seasoned")
+  .select("team_id, program, team")
+  .eq("season_id", selectedSeason.id)
+  .ilike("search_text", `%${safeTerm}%`)
+  .limit(200);
 
       if (error) {
-        console.error("Search failed:", error);
-        setSearchResults([]);
-        setSearchLoading(false);
-        return;
-      }
+  console.error("Search failed:", {
+    message: error.message,
+    details: error.details,
+    hint: error.hint,
+    code: error.code,
+    selectedSeason: selectedSeason.id,
+    safeTerm,
+  });
+
+  setSearchResults([]);
+  setSearchLoading(false);
+  return;
+}
 
       const seen = new Set<string>();
       const results: TeamOption[] = [];
@@ -358,12 +365,20 @@ function CompBuilderInner() {
         .order("weekend_date", { ascending: true });
 
       if (eventError) {
-        console.error("Failed to load roster event rows:", eventError);
-        setTeamRows({});
-        setTeamPerformanceRows({});
-        setDataLoading(false);
-        return;
-      }
+  console.error("Failed to load roster event rows:", {
+    message: eventError.message,
+    details: eventError.details,
+    hint: eventError.hint,
+    code: eventError.code,
+    selectedSeason: selectedSeason.id,
+    teamIds,
+  });
+
+  setTeamRows({});
+  setTeamPerformanceRows({});
+  setDataLoading(false);
+  return;
+}
 
       const eventRows = (eventData ?? []) as TeamEventRow[];
 

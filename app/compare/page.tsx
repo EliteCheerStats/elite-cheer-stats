@@ -706,11 +706,12 @@ export default function ComparePage() {
         setLoadingA(true);
         setError(null);
 
-        const { data: scoreData, error: scoreErr } = await supabase
+       const { data: scoreData, error: scoreErr } = await supabase
   .from("v_team_event_scores_seasoned")
   .select(
     "team_id, program, team, event_id, event_name, weekend_date, division, event_score"
   )
+  .eq("season_id", selectedSeason.id)
   .eq("team_id", teamA.team_id)
   .order("weekend_date", { ascending: true });
 
@@ -780,14 +781,14 @@ export default function ComparePage() {
         setLoadingB(true);
         setError(null);
 
-        const { data: scoreData, error: scoreErr } = await supabase
+       const { data: scoreData, error: scoreErr } = await supabase
   .from("v_team_event_scores_seasoned")
   .select(
     "team_id, program, team, event_id, event_name, weekend_date, division, event_score"
   )
+  .eq("season_id", selectedSeason.id)
   .eq("team_id", teamB.team_id)
   .order("weekend_date", { ascending: true });
-
         if (scoreErr) throw scoreErr;
         if (cancelled) return;
 
