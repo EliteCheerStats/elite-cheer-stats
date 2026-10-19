@@ -108,10 +108,23 @@ export async function POST(request: NextRequest) {
     }
 
     const monthlyPrice =
-      process.env.STRIPE_PRICE_ID_PREMIUM_MONTHLY!;
+      process.env.STRIPE_PRICE_ID_PREMIUM_MONTHLY;
 
     const annualPrice =
-      process.env.STRIPE_PRICE_ID_PREMIUM_ANNUAL!;
+      process.env.STRIPE_PRICE_ID_PREMIUM_ANNUAL;
+
+    // Fail before making Stripe changes if either price is missing.
+    if (!monthlyPrice || !annualPrice) {
+      console.error("Missing Stripe Premium price configuration", {
+        monthlyConfigured: Boolean(monthlyPrice),
+        annualConfigured: Boolean(annualPrice),
+      });
+
+      return NextResponse.json(
+        { error: "Billing configuration is incomplete" },
+        { status: 500 }
+      );
+    }
 
     const item = subscription.items.data[0];
 
@@ -136,15 +149,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 5. Create a schedule FROM the existing subscription.
+    // 5. Create a schedule from the existing subscription.
     // This does not create another subscription or charge now.
     const schedule = await stripe.subscriptionSchedules.create({
       from_subscription: subscription.id,
     });
 
     try {
-      // Stripe establishes the current phase's start date.
-      // Preserve that exact timestamp when updating phases.
       const currentPhase = schedule.phases[0];
 
       if (
@@ -156,7 +167,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // 6. Keep Monthly until renewal, then use Annual.
+      // 6. Keep Monthly until renewal, then switch to Annual.
       await stripe.subscriptionSchedules.update(schedule.id, {
         end_behavior: "release",
         proration_behavior: "none",
@@ -184,6 +195,7 @@ export async function POST(request: NextRequest) {
               interval: "year",
               interval_count: 1,
             },
+            billing_cycle_anchor: "phase_start",
             proration_behavior: "none",
           },
         ],
@@ -216,6 +228,7 @@ export async function POST(request: NextRequest) {
         !annualPhase ||
         monthlyPhase.end_date !== renewalDate ||
         annualPhase.start_date !== renewalDate ||
+        annualPhase.billing_cycle_anchor !== "phase_start" ||
         !phaseHasPrice(monthlyPhase, monthlyPrice) ||
         !phaseHasPrice(annualPhase, annualPrice)
       ) {
@@ -238,8 +251,7 @@ export async function POST(request: NextRequest) {
         scheduleError
       );
 
-      // Release the schedule if configuration or verification
-      // fails. This preserves the existing subscription.
+      // Release the schedule if configuration or verification fails.
       try {
         await stripe.subscriptionSchedules.release(schedule.id);
       } catch (releaseError) {
