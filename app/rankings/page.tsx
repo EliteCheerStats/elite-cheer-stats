@@ -622,7 +622,7 @@ export default function RankingsPage() {
 
 
 
-  const tableTop20 = useMemo(() => teamRankings.slice(0, 20), [teamRankings]);
+  const tableTop100 = useMemo(() => teamRankings.slice(0, 100), [teamRankings]);
 
 
 
@@ -685,7 +685,7 @@ export default function RankingsPage() {
 
           <p className="mt-2 text-sm text-slate-300">
 
-            Top 10 is just the starting point — teams ranked 11–20 are separating fast this week.
+            Top 10 is just the beginning — unlock the Top 100 with ECS Premium.
 
           </p>
 
@@ -1083,7 +1083,7 @@ export default function RankingsPage() {
 
           <div className="flex items-center justify-between">
 
-            <div className="text-sm font-semibold text-slate-100">Top 20</div>
+            <div className="text-sm font-semibold text-slate-100">{!premiumLoading && isPremium ? "Top 100" : "Top 10 + Premium Preview"}</div>
 
 
 
@@ -1099,7 +1099,7 @@ export default function RankingsPage() {
 
                 >
 
-                  {session?.user ? "Unlock Full Rankings" : "Create Account"}
+                  {session?.user ? "Unlock Top 100 Rankings" : "Create Account"}
 
                 </Link>
 
@@ -1121,7 +1121,7 @@ export default function RankingsPage() {
 
 
 
-        {!loading && !error && tableTop20.length === 0 ? (
+        {!loading && !error && tableTop100.length === 0 ? (
 
           <div className="p-6 text-slate-200">{emptyHint}</div>
 
@@ -1155,7 +1155,7 @@ export default function RankingsPage() {
 
               <tbody className="divide-y divide-white/10">
 
-                {tableTop20.slice(0, 10).map((t, idx) => (
+                {tableTop100.slice(0, 10).map((t, idx) => (
 
                   <tr key={t.key} className="text-slate-100 hover:bg-white/5">
 
@@ -1181,7 +1181,7 @@ export default function RankingsPage() {
 
 
 
-                {tableTop20.slice(10, 20).map((t, idx) => (
+                {tableTop100.slice(10, 20).map((t, idx) => (
 
                   <tr key={t.key}>
 
@@ -1253,7 +1253,18 @@ export default function RankingsPage() {
 
 
 
-                {!premiumLoading && !isPremium && tableTop20.length > 10 && (
+                {!premiumLoading && isPremium && tableTop100.slice(20, 100).map((t, idx) => (
+                  <tr key={t.key} className="text-slate-100 hover:bg-white/5">
+                    <td className="px-3 py-3 text-slate-300">{idx + 21}</td>
+                    <td className="px-3 py-3 font-semibold">{t.team}</td>
+                    <td className="px-3 py-3 text-slate-200">{t.program}</td>
+                    <td className="px-3 py-3 text-slate-200">{t.bucket}</td>
+                    <td className="px-3 py-3 text-right font-semibold">{t.avg.toFixed(3)}</td>
+                    <td className="px-3 py-3 text-right text-slate-200">{t.comps}</td>
+                  </tr>
+                ))}
+
+                {!premiumLoading && !isPremium && tableTop100.length > 10 && (
 
                   <tr>
 
@@ -1269,7 +1280,7 @@ export default function RankingsPage() {
 
                         <div className="mt-2 text-sm text-white/70">
 
-                          Teams ranked 11–20 are separating fast this week. Unlock full rankings and compare who’s actually in the mix.
+                          Unlock Top 100 Rankings with ECS Premium and see who’s actually in the mix.
 
                         </div>
 
@@ -1285,7 +1296,7 @@ export default function RankingsPage() {
 
                           >
 
-                            {session?.user ? "Unlock Full Rankings" : "Create Account"}
+                            {session?.user ? "Unlock Top 100 Rankings" : "Create Account"}
 
                           </Link>
 
