@@ -20,7 +20,7 @@ type D2Mode = "Any" | "D2Only" | "NonD2Only";
 
 type FlexMode = "Any" | "FlexOnly" | "NonFlexOnly";
 
-type CoedMode = "Any" | "CoedOnly" | "NonCoedOnly";
+type CoedMode = "Any" | "CoedOnly" | "NonCoedOnly" | `Coed ${number}`;
 
 type LevelOpt = string;
 
@@ -58,7 +58,10 @@ type RankingRow = {
 
   team: string;
 
-  level_code: string | null;
+    level_code: string | null;
+  level_label: string | null;
+  coed_label: string | null;
+  division_label: string | null;
 
   age_bucket: string | null;
 
@@ -186,6 +189,7 @@ export default function RankingsPage() {
   const [session, setSession] = useState<any>(null);
   const [levelOptions, setLevelOptions] = useState<string[]>([]);
   const [ageOptions, setAgeOptions] = useState<string[]>([]);
+  const [coedOptions, setCoedOptions] = useState<string[]>([]);
   const [optionsLoading, setOptionsLoading] = useState(false);
   const [optionsError, setOptionsError] = useState<string | null>(null);
 
@@ -273,7 +277,9 @@ export default function RankingsPage() {
         latest_division,
 
         division_bucket,
-
+        division_label,
+        level_label,
+        coed_label,
         avg_event_score,
 
         avg_ceiling_score,
@@ -295,10 +301,8 @@ export default function RankingsPage() {
     // Explicitly exclude Novice, Rec and other unsupported tracks.
     q = filters.track === "Prep" ? q.eq("track", "PREP") : q.is("track", null);
 
-    if (filters.level !== "All") {
-
-      q = q.eq("level_code", filters.level);
-
+        if (filters.level !== "All") {
+      q = q.eq("level_label", filters.level);
     }
 
 
@@ -351,10 +355,12 @@ export default function RankingsPage() {
 
 
 
-    if (filters.coedMode === "NonCoedOnly") {
-
+        if (filters.coedMode === "NonCoedOnly") {
       q = q.eq("is_coed", false);
+    }
 
+    if (filters.coedMode.startsWith("Coed ")) {
+      q = q.eq("coed_label", filters.coedMode);
     }
 
 
@@ -522,6 +528,7 @@ export default function RankingsPage() {
     let cancelled = false;
     setLevelOptions([]);
     setAgeOptions([]);
+    setCoedOptions([]);
     setOptionsError(null);
     if (!selectedSeason?.id) {
       setOptionsLoading(false);
@@ -530,14 +537,15 @@ export default function RankingsPage() {
 
     const loadOptions = async () => {
       setOptionsLoading(true);
-      const levels = new Set<string>();
+            const levels = new Set<string>();
       const ages = new Set<string>();
+      const coeds = new Set<string>();
       const batchSize = 1000;
       try {
         for (let offset = 0; ; offset += batchSize) {
           let query = supabase
             .from("v_rankings_with_track_seasoned")
-            .select("level_code,age_bucket")
+            .select("level_label,age_bucket,coed_label")
             .eq("season_id", selectedSeason.id)
             .order("team_id", { ascending: true })
             .range(offset, offset + batchSize - 1);
@@ -547,22 +555,28 @@ export default function RankingsPage() {
           const { data, error: queryError } = await query;
           if (cancelled) return;
           if (queryError) throw queryError;
-          for (const item of data ?? []) {
-            if (item.level_code?.trim()) levels.add(item.level_code.trim());
+                    for (const item of data ?? []) {
+            if (item.level_label?.trim()) levels.add(item.level_label.trim());
             if (item.age_bucket?.trim()) ages.add(item.age_bucket.trim());
+
+            const coed = item.coed_label?.trim();
+            if (coed && /^Coed \d+$/.test(coed)) {
+              coeds.add(coed);
+            }
           }
           if (!data || data.length < batchSize) break;
         }
         const sortOptions = (a: string, b: string) =>
           a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
         if (!cancelled) {
-          setLevelOptions([...levels].sort(sortOptions));
+                    setLevelOptions([...levels].sort(sortOptions));
           setAgeOptions([...ages].sort(sortOptions));
+          setCoedOptions([...coeds].sort(sortOptions));
         }
       } catch (err) {
         if (!cancelled) {
           console.error("Rankings filter options error:", err);
-          setOptionsError("Unable to load level and age options. Please try again.");
+          setOptionsError("Unable to load filter options. Please try again.");
         }
       } finally {
         if (!cancelled) setOptionsLoading(false);
@@ -584,7 +598,7 @@ export default function RankingsPage() {
 
         team: String(r.team ?? ""),
 
-        bucket: String(r.division_bucket ?? r.latest_division ?? ""),
+        bucket: String(r.division_label ?? r.division_bucket ?? r.latest_division ?? ""),
 
         avg: toNum(r.avg_event_score),
 
@@ -637,7 +651,7 @@ export default function RankingsPage() {
 
     filters.age !== "All" ? filters.age : null,
 
-    filters.coedMode === "CoedOnly" ? "Coed" : filters.coedMode === "NonCoedOnly" ? "Non-Coed" : null,
+    filters.coedMode === "CoedOnly" ? "Coed" : filters.coedMode === "NonCoedOnly" ? "Non-Coed" : filters.coedMode !== "Any" ? filters.coedMode : null,
 
     filters.flexMode === "FlexOnly" ? "Flex" : null,
 
@@ -787,7 +801,7 @@ export default function RankingsPage() {
 
       <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/10 to-white/5 p-5">
         {optionsError && <p className="mb-3 text-sm text-red-300">{optionsError}</p>}
-        {optionsLoading && <p className="mb-3 text-xs text-slate-400">Loading available levels and ages…</p>}
+        {optionsLoading && <p className="mb-3 text-xs text-slate-400">Loading available filters…</p>}
 
         <div className="grid grid-cols-1 gap-3 md:grid-cols-4 lg:grid-cols-8 md:items-end">
 
@@ -797,7 +811,7 @@ export default function RankingsPage() {
             <select
               value={filters.track}
               onChange={(e) => {
-                setFilters((f) => ({ ...f, track: e.target.value as TrackOpt, level: "All", age: "All" }));
+                setFilters((f) => ({ ...f, track: e.target.value as TrackOpt, level: "All", age: "All", coedMode: "Any" }));
                 setRows([]);
                 setHasSearched(false);
                 setError(null);
@@ -824,7 +838,7 @@ export default function RankingsPage() {
               <option value="All">All</option>
 
               {levelOptions.map((level) => (
-                <option key={level} value={level}>{level}</option>
+                <option key={level} value={level}>{level.replace(/^L/, "Level ")}</option>
               ))}
             </select>
 
@@ -964,6 +978,9 @@ export default function RankingsPage() {
               <option value="CoedOnly">Coed</option>
 
               <option value="NonCoedOnly">Non-Coed</option>
+{coedOptions.map((coed) => (
+  <option key={coed} value={coed}>{coed}</option>
+))}
 
             </select>
 
